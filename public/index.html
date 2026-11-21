@@ -90,7 +90,7 @@
   .hint{font-size:13px;color:var(--muted);margin:8px 2px 0;min-height:1.2em;font-weight:600}
   .err{color:var(--stop)}
   nav{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom) + 8px);background:var(--card);border-radius:22px;box-shadow:0 6px 28px rgba(80,60,30,.14);
-    display:grid;grid-template-columns:repeat(4,1fr);padding:6px;z-index:5;max-width:540px;margin:0 auto}
+    display:grid;grid-template-columns:repeat(5,1fr);padding:6px;z-index:5;max-width:540px;margin:0 auto}
   nav button{background:transparent;padding:7px 2px;font-size:12px;color:var(--muted);border-radius:16px}
   nav button.on{color:var(--ink);background:var(--soft)}
   nav button .ic{display:block;font-size:21px;line-height:1.2}
@@ -153,6 +153,29 @@
   @keyframes wave{0%,100%{transform:rotate(0)}50%{transform:rotate(22deg)}}
   @keyframes shake{25%{transform:translateX(-5px) rotate(-3deg)}75%{transform:translateX(5px) rotate(3deg)}}
   .fun{font-size:13px;color:var(--muted);font-weight:700;margin-top:10px}
+  /* kosten */
+  .settle{display:flex;align-items:center;justify-content:center;gap:12px;margin:6px 0 2px}
+  .settle .arrow{font-size:22px;color:var(--muted);font-weight:900}
+  .amount{font-size:40px;font-weight:900;text-align:center;line-height:1.1;font-variant-numeric:tabular-nums}
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .kpis > div{background:var(--soft);border-radius:16px;padding:12px;text-align:center}
+  .kpis b{display:block;font-size:24px;font-weight:900;font-variant-numeric:tabular-nums}
+  .kpis span{font-size:12px;color:var(--muted);font-weight:700}
+  .legend{display:grid;gap:8px;margin-top:4px}
+  .legend div{display:flex;align-items:center;gap:8px;font-size:14px}
+  .legend i{width:12px;height:12px;border-radius:4px;flex:none}
+  .legend .amt{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
+  .facts{display:grid;gap:10px}
+  .facts div{display:flex;gap:10px;align-items:flex-start;font-weight:700;font-size:14px}
+  .facts .e{font-size:20px;line-height:1}
+  .monthbars{display:flex;align-items:flex-end;gap:6px;height:110px;margin-top:8px}
+  .monthbars div{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+  .monthbars i{display:block;width:100%;border-radius:8px 8px 4px 4px;background:var(--sky);min-height:3px}
+  .monthbars span{font-size:11px;color:var(--muted);font-weight:700}
+  .breakdown{font-size:13px;color:var(--muted);font-weight:600;margin-top:10px;display:none}
+  .breakdown.on{display:block}
+  .breakdown table{width:100%;border-collapse:collapse}
+  .breakdown td{padding:3px 0}.breakdown td:last-child{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-left:8px}
   @media (prefers-reduced-motion: reduce){ .driving .car *, .pop *{animation:none !important} }
 </style>
 </head>
@@ -219,6 +242,11 @@
     <div class="card" id="tankList"></div>
   </section>
 
+  <!-- ===== KOSTEN ===== -->
+  <section id="v-kosten" class="view">
+    <div id="costsView"><div class="card muted">Kosten laden…</div></div>
+  </section>
+
   <!-- ===== OVERZICHT ===== -->
   <section id="v-overzicht" class="view">
     <button class="primary full" id="btnCopyAll">Kopieer alles voor Excel</button>
@@ -252,6 +280,7 @@
 <nav>
   <button data-v="rit" class="on"><span class="ic">🚗</span>Rit</button>
   <button data-v="tank"><span class="ic">⛽</span>Tanken</button>
+  <button data-v="kosten"><span class="ic">💶</span>Kosten</button>
   <button data-v="overzicht"><span class="ic">📋</span>Overzicht</button>
   <button data-v="inst"><span class="ic">⚙️</span>Instellingen</button>
 </nav>
@@ -308,6 +337,28 @@
       <button class="primary" id="shSave">Opslaan</button>
     </div>
     <button class="danger full" style="margin-top:10px;display:none" id="shDelete">Verwijderen</button>
+  </div>
+</div>
+
+<!-- Sheet: kosten -->
+<div class="sheet-bg" id="costBg">
+  <div class="sheet">
+    <h3 id="ctTitle">Kosten toevoegen</h3>
+    <label>Betaald door</label>
+    <div class="pick" id="ctHH"></div>
+    <div class="row">
+      <div><label for="ctCost">Bedrag (€)</label><input id="ctCost" inputmode="decimal" placeholder="181,00"></div>
+      <div><label for="ctDate">Datum</label><input id="ctDate" type="date"></div>
+    </div>
+    <label for="ctDesc">Omschrijving</label>
+    <input id="ctDesc" maxlength="80" list="ctList" autocomplete="off" placeholder="bijv. Centraal beheer, APK, parkeervergunning">
+    <datalist id="ctList"></datalist>
+    <div class="hint" id="ctCat"></div>
+    <div class="row" style="margin-top:16px">
+      <button class="ghost" id="ctCancel">Annuleren</button>
+      <button class="primary" id="ctSave">Opslaan</button>
+    </div>
+    <button class="danger full" style="margin-top:10px;display:none" id="ctDelete">Verwijderen</button>
   </div>
 </div>
 

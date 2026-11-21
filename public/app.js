@@ -1,5 +1,6 @@
 import {
   HOUSEHOLDS, trackStep, computeRides, counterBefore, totals, excelText, parseNum, newId,
+  costInsights, categoryOf,
 } from './core.js';
 import { car, duo, logo } from './art.js';
 import { startLine, stopLine, tankLine, compareLine, honk } from './fun.js';
@@ -7,7 +8,7 @@ import { startLine, stopLine, tankLine, compareLine, honk } from './fun.js';
 // ================= opslag op het toestel =================
 const KEY = {
   entries: 'kmdelen.v3.entries', outbox: 'kmdelen.v3.outbox', code: 'kmdelen.v3.code',
-  settings: 'kmdelen.v3.settings', active: 'kmdelen.v3.active',
+  settings: 'kmdelen.v3.settings', active: 'kmdelen.v3.active', costs: 'kmdelen.v3.sheetcosts',
 };
 const mem = {};
 const local = {
@@ -443,7 +444,7 @@ function renderTank() {
   bindItems($('tankList'));
 }
 function renderOverview() {
-  const el = $('overview'), list = all();
+  const el = $('overview'), list = all().filter((e) => e.type === 'rit' || e.type === 'tank');
   if (!list.length) { el.innerHTML = '<div class="card muted" style="margin-top:12px">Nog niets ingevoerd.</div>'; return; }
   const { km } = computeRides(list), groups = {};
   for (const e of sortDesc(list)) (groups[e.date.slice(0, 7)] ||= []).push(e);
@@ -459,8 +460,126 @@ function render() {
   $('idle').style.display = active ? 'none' : 'block';
   $('active').style.display = active ? 'block' : 'none';
   if (active) renderActive(); else renderIdle();
-  renderTank(); renderOverview(); setSync(syncState, syncError);
+  renderTank(); renderOverview(); renderCosts(); setSync(syncState, syncError);
 }
+
+// ================= kosten =================
+let sheetCosts = local.get(KEY.costs, []), costsSync = false, costsError = '', costsLoadedAt = 0;
+async function loadCosts(force = false) {
+  if (!code || (!force && Date.now() - costsLoadedAt < 60000)) return;
+  try {
+    const res = await fetch('/api/costs', { headers: { 'x-groep': code }, cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    costsSync = !!data.costsSync;
+    if (!res.ok) throw new Error(data.error || `Fout (${res.status})`);
+    sheetCosts = data.costs || []; local.set(KEY.costs, sheetCosts); costsError = ''; costsLoadedAt = Date.now();
+  } catch (err) { costsError = err instanceof TypeError ? 'Offline: laatst bekende kosten' : err.message; }
+  renderCosts();
+}
+const allCosts = () => [...sheetCosts, ...all().filter((e) => e.type === 'kost')];
+const eur0 = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const shortMonth = (k) => new Date(`${k}-01T12:00`).toLocaleDateString('nl-NL', { month: 'short' }).replace('.', '');
+
+function renderCosts() {
+  const el = $('costsView');
+  if (!el) return;
+  const costs = allCosts(), ins = costInsights(all(), costs);
+  const { settle, debtor, creditor, amount } = ins;
+  const sign = (v) => `${v >= 0 ? '+' : '−'} ${eur.format(Math.abs(v))}`;
+  const maxMonth = Math.max(1, ...ins.months.map(([, v]) => v));
+  const shareText = `🚗 Disco Polo afrekening\n${debtor} → ${creditor}: ${eur.format(amount)}\n(brandstof naar km, vaste kosten 50/50)\nkm-delen.vercel.app`;
+  const list = [...costs].sort((a, b) => b.date.localeCompare(a.date));
+  el.innerHTML = `
+    ${costsError ? `<div class="card warn small">${esc(costsError)}</div>` : ''}
+    <div class="card">
+      <div class="between"><b>Afrekening</b><span class="muted small">sinds de start</span></div>
+      ${amount >= 0.5 ? `
+      <div class="settle">${duo(debtor, 44)}<span class="arrow">→</span>${duo(creditor, 44)}</div>
+      <div class="amount">${eur.format(amount)}</div>
+      <div class="muted small" style="text-align:center;font-weight:700">${debtor} betaalt ${creditor}</div>`
+      : `<div class="amount" style="margin:14px 0 4px">Quitte! 🤝</div>`}
+      <div class="row" style="margin-top:12px">
+        <button class="ghost small" id="btnBreakdown">Hoe komt dit?</button>
+        ${amount >= 0.5 ? '<button class="primary small" id="btnShareSettle">Deel via WhatsApp</button>' : ''}
+      </div>
+      <div class="breakdown" id="breakdown"><table>
+        ${HOUSEHOLDS.map((h) => `
+          <tr><td colspan="2" style="padding-top:8px;color:var(--ink);font-weight:800">${h}</td></tr>
+          <tr><td>⛽ brandstof getankt − aandeel naar km</td><td>${sign(settle[h].fuelPart)}</td></tr>
+          <tr><td>🧾 vaste kosten betaald − helft</td><td>${sign(settle[h].fixedPart)}</td></tr>`).join('')}
+      </table><p style="margin:8px 0 0">Brandstof: ${eur.format(ins.fuel)} verdeeld naar ${nf0.format(ins.km)} km. Vaste kosten: ${eur.format(ins.fixed)} gedeeld door twee.</p></div>
+    </div>
+
+    <div class="card">
+      <b>Wat kost een kilometer?</b>
+      <div class="kpis" style="margin-top:10px">
+        <div><b>${ins.perKmFuel != null ? eur.format(ins.perKmFuel) : '–'}</b><span>⛽ alleen brandstof</span></div>
+        <div><b>${ins.perKmAll != null ? eur.format(ins.perKmAll) : '–'}</b><span>🚗 alles meegerekend</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="between"><b>Waar gaat het geld heen?</b><span class="muted small">${eur0.format(ins.total)}</span></div>
+      <div class="bar" style="height:16px">${ins.cats.map((c) => `<i style="width:${(c.total / ins.total) * 100}%;background:${c.color}"></i>`).join('')}</div>
+      <div class="legend">${ins.cats.map((c) => `<div><i style="background:${c.color}"></i>${c.emo} ${c.key}
+        <span class="muted small">${nf0.format((c.total / ins.total) * 100)}%</span><span class="amt">${eur0.format(c.total)}</span></div>`).join('')}</div>
+    </div>
+
+    ${ins.months.length ? `<div class="card"><b>Per maand</b>
+      <div class="monthbars">${ins.months.slice(-8).map(([k, v]) => `<div title="${eur.format(v)}"><span>${eur0.format(v).replace('€', '').trim()}</span><i style="height:${Math.max(3, (v / maxMonth) * 80)}px"></i><span>${shortMonth(k)}</span></div>`).join('')}</div></div>` : ''}
+
+    ${ins.facts.length ? `<div class="card"><b>Polo-weetjes</b><div class="facts" style="margin-top:10px">${ins.facts.map((f) => `<div><span class="e">${f.emo}</span><span>${esc(f.text)}</span></div>`).join('')}</div></div>` : ''}
+
+    <h2 class="between"><span>Vaste kosten</span><button class="ghost small" style="padding:6px 12px" id="btnAddCost">＋ Toevoegen</button></h2>
+    ${!costsSync && all().some((e) => e.type === 'kost') ? '<p class="hint" style="margin:-4px 4px 8px">Kosten uit de app komen in de spreadsheet zodra het script is bijgewerkt.</p>' : ''}
+    <div class="card">${list.length ? list.map((c) => `
+      <div class="item" data-cost="${esc(c.id)}">
+        <span style="font-size:22px">${categoryOf(c.desc).emo}</span>
+        <div class="info"><div>${esc(c.desc || categoryOf(c.desc).key)}</div><div class="muted small">${dayLabel(c.date)} · ${c.hh}${c.src === 'sheet' ? '' : ' · app'}</div></div>
+        <span class="val">${eur.format(c.cost)}</span></div>`).join('') : '<span class="muted">Nog geen vaste kosten.</span>'}
+    </div>`;
+  $('btnBreakdown').onclick = () => $('breakdown').classList.toggle('on');
+  if ($('btnShareSettle')) $('btnShareSettle').onclick = async () => {
+    if (navigator.share) { try { await navigator.share({ text: shareText }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank');
+  };
+  $('btnAddCost').onclick = () => openCost({ mode: 'new', hh: settings.lastHH, date: today() });
+  el.querySelectorAll('[data-cost]').forEach((r) => {
+    r.onclick = () => {
+      const e = entries.get(r.dataset.cost);
+      if (e) openCost({ ...e, mode: 'edit' });
+      else toast('Deze kostenpost pas je aan in de spreadsheet');
+    };
+  });
+}
+
+let costSheet = null;
+function openCost(o) {
+  costSheet = { ...o };
+  $('ctTitle').textContent = o.mode === 'edit' ? 'Kosten bewerken' : 'Kosten toevoegen';
+  $('ctCost').value = toInput(o.cost); $('ctDesc').value = o.desc || ''; $('ctDate').value = o.date || today();
+  $('ctDelete').style.display = o.mode === 'edit' ? 'block' : 'none';
+  $('ctList').innerHTML = [...new Set(allCosts().map((c) => c.desc).filter(Boolean))].slice(0, 30).map((d) => `<option value="${esc(d)}">`).join('');
+  const draw = () => renderPick($('ctHH'), costSheet.hh, (h) => { costSheet.hh = h; draw(); }); draw();
+  updCat(); $('costBg').classList.add('on');
+}
+function updCat() { const c = categoryOf($('ctDesc').value); $('ctCat').textContent = $('ctDesc').value ? `${c.emo} ${c.key}` : ''; }
+$('ctDesc').oninput = updCat;
+$('ctCancel').onclick = () => { $('costBg').classList.remove('on'); costSheet = null; };
+$('ctSave').onclick = () => {
+  const cost = parseNum($('ctCost').value), desc = $('ctDesc').value.trim(), date = $('ctDate').value || today();
+  if (!(cost > 0)) return toast('Vul het bedrag in');
+  if (!desc) return toast('Vul een omschrijving in');
+  const base = costSheet.mode === 'edit' ? entries.get(costSheet.id) || {} : {};
+  putEntry({ ...base, id: base.id || newId(), type: 'kost', date, t: base.t || tFor(date), hh: costSheet.hh, cost: Math.round(cost * 100) / 100, desc });
+  const hh = costSheet.hh;
+  $('costBg').classList.remove('on'); costSheet = null;
+  pop(hh, categoryOf(desc).emo, `${eur.format(cost)} genoteerd`, `${desc} · betaald door ${hh}`);
+};
+$('ctDelete').onclick = async () => {
+  if (!await confirmBox('Verwijderen?', 'Deze kostenpost wordt ook bij de anderen verwijderd.', 'Verwijderen', 'Terug')) return;
+  const id = costSheet.id; $('costBg').classList.remove('on'); costSheet = null; deleteEntry(id);
+};
 
 // ================= knoppen & navigatie =================
 for (const id of ['heroCar', 'driveCar', 'gateCar']) {
@@ -505,6 +624,7 @@ document.querySelectorAll('nav button').forEach((b) => {
     document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
     document.querySelectorAll('.view').forEach((v) => v.classList.toggle('on', v.id === `v-${b.dataset.v}`));
     if (b.dataset.v === 'inst') $('factor').value = toInput(settings.factor || 1);
+    if (b.dataset.v === 'kosten') loadCosts();
     render(); window.scrollTo(0, 0);
   };
 });

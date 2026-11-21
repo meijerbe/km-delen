@@ -4,7 +4,8 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { handle, handleImport, health } from '../lib/handler.js';
+import { handle, handleImport, handleCosts, health } from '../lib/handler.js';
+import { readFileSync } from 'node:fs';
 import { sheetConfig } from '../lib/sheet.js';
 import { memoryStore } from '../lib/store.js';
 
@@ -13,6 +14,8 @@ const port = Number(process.env.PORT || 4173);
 const code = process.env.GROUP_CODE || 'test';
 const store = memoryStore();
 const sheet = sheetConfig();   // optioneel: SHEET_WEBHOOK_URL en SHEET_TOKEN
+// Lokaal: kosten uit een JSON-bestand (COSTS_FIXTURE) in plaats van Google Sheets
+const sheetCosts = process.env.COSTS_FIXTURE ? async () => JSON.parse(readFileSync(process.env.COSTS_FIXTURE, 'utf8')) : async () => [];
 const types = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css',
   '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json',
@@ -25,6 +28,7 @@ createServer(async (req, res) => {
       '/api/entries': (r, c) => handle(r, c),
       '/api/sheet-import': (r, c) => handleImport(r, c),
       '/api/health': (_r, c) => health(c),
+      '/api/costs': (r, c) => handleCosts(r, c),
     };
     if (routes[url.pathname]) {
       const chunks = [];
@@ -33,7 +37,7 @@ createServer(async (req, res) => {
         method: req.method, headers: req.headers,
         body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks),
       });
-      const response = await routes[url.pathname](request, { code, store: () => store, sheet });
+      const response = await routes[url.pathname](request, { code, store: () => store, sheet, sheetCosts });
       res.writeHead(response.status, Object.fromEntries(response.headers));
       res.end(Buffer.from(await response.arrayBuffer()));
       return;

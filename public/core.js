@@ -94,7 +94,7 @@ export const EXCEL_HEADER = ['Date', 'Bestuurder', 'Bijrijders', 'Aantal kilomet
 export function excelText(entries, monthKey, withHeader) {
   const { km } = computeRides(entries);
   const rows = entries
-    .filter((e) => !monthKey || e.date.slice(0, 7) === monthKey)
+    .filter((e) => (e.type === 'rit' || e.type === 'tank') && (!monthKey || e.date.slice(0, 7) === monthKey))
     .sort(byTime)
     .map((e) => e.type === 'rit'
       ? [e.date, e.hh, e.bij || '', km.get(e.id)?.km ?? e.km, '', '', e.stand ?? '']
@@ -114,4 +114,85 @@ export function parseNum(s, thousands = false) {
 
 export function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// ---------- kosten ----------
+export const CATEGORIES = [
+  { key: 'Verzekering', emo: '🛡️', color: '#7C9CF0', re: /centraal\s*beheer|verzeker|pechhulp|anwb|allianz|interpolis|fbto|ohra/i },
+  { key: 'Belasting', emo: '🏛️', color: '#B48CE0', re: /belasting|mrb/i },
+  { key: 'Onderhoud', emo: '🔧', color: '#F2B33D', re: /apk|onderhoud|reparat|vervang|voorruit|ruit|band|olie|lamp|licht|accu|garage|wasstraat|poets/i },
+  { key: 'Parkeren', emo: '🅿️', color: '#4FB6A8', re: /parkeer|parkeren|vergunning/i },
+  { key: 'Reizen', emo: '🧳', color: '#EE8A6B', re: /vignet|tol|veer|péage|maut/i },
+  { key: 'Overig', emo: '📎', color: '#B8AFA4', re: /.*/ },
+];
+export const FUEL = { key: 'Brandstof', emo: '⛽', color: '#2FA37A' };
+export const categoryOf = (desc) => CATEGORIES.find((c) => c.re.test(desc || '')) || CATEGORIES.at(-1);
+
+const DUTCH_MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
+
+/**
+ * Inzicht in alle kosten. `costs` = vaste kosten (uit de sheet en uit de app), `entries` = ritten/tankbeurten.
+ * Afrekening: brandstof naar verhouding van de km, vaste kosten 50/50, min wat elk stel al betaalde.
+ */
+export function costInsights(entries, costs, now = new Date()) {
+  const t = totals(entries);
+  const km = t.Klein + t.Groot;
+  const fuel = t.kosten;
+  const fixed = costs.reduce((s, c) => s + c.cost, 0);
+
+  const cats = new Map([[FUEL.key, { ...FUEL, total: fuel }], ...CATEGORIES.map((c) => [c.key, { ...c, total: 0 }])]);
+  for (const c of costs) cats.get(categoryOf(c.desc).key).total += c.cost;
+
+  const months = new Map();
+  const addMonth = (date, v) => { const k = date.slice(0, 7); months.set(k, (months.get(k) || 0) + v); };
+  costs.forEach((c) => addMonth(c.date, c.cost));
+  entries.filter((e) => e.type === 'tank').forEach((e) => addMonth(e.date, e.cost));
+
+  // Afrekening
+  const paidFixed = { Klein: 0, Groot: 0 };
+  costs.forEach((c) => { paidFixed[c.hh] += c.cost; });
+  const settle = {};
+  for (const h of HOUSEHOLDS) {
+    const fuelShare = km ? (t[h] / km) * fuel : fuel / 2;
+    const fuelPart = t.tank[h] - fuelShare;
+    const fixedPart = paidFixed[h] - fixed / 2;
+    settle[h] = { fuelPart, fixedPart, net: fuelPart + fixedPart };
+  }
+  const debtor = settle.Klein.net < settle.Groot.net ? 'Klein' : 'Groot';
+  const creditor = debtor === 'Klein' ? 'Groot' : 'Klein';
+  const amount = Math.round(((settle[creditor].net - settle[debtor].net) / 2) * 100) / 100;
+
+  // Weetjes
+  const facts = [];
+  const byDate = [...costs].sort((a, b) => a.date.localeCompare(b.date));
+  const ins = byDate.filter((c) => categoryOf(c.desc).key === 'Verzekering' && !/pech/i.test(c.desc)).at(-1);
+  if (ins) facts.push({ emo: '🛡️', text: `De verzekering kost zo'n € ${(ins.cost * 12 / 365).toFixed(2).replace('.', ',')} per dag` });
+  const repairs = costs.filter((c) => ['Onderhoud', 'Reizen', 'Overig'].includes(categoryOf(c.desc).key) && !/apk/i.test(c.desc));
+  const top = repairs.sort((a, b) => b.cost - a.cost)[0];
+  if (top) facts.push({ emo: '😬', text: `Duurste klus: ${top.desc.toLowerCase()} (€ ${Math.round(top.cost)})` });
+  const tax = byDate.filter((c) => categoryOf(c.desc).key === 'Belasting').at(-1);
+  const until = tax?.desc.match(/t\/?m\s+(\d{1,2})\s+([a-z]+)\s+(\d{4})/i);
+  if (until) {
+    const mi = DUTCH_MONTHS.indexOf(until[2].toLowerCase());
+    const end = mi >= 0 ? new Date(+until[3], mi, +until[1]) : null;
+    if (end && end >= now) facts.push({ emo: '🗓️', text: `Wegenbelasting betaald t/m ${until[1]} ${until[2]}` });
+    else if (end) facts.push({ emo: '⚠️', text: `Wegenbelasting liep tot ${until[1]} ${until[2]}: tijd voor de volgende` });
+  }
+  const apk = byDate.filter((c) => /apk/i.test(c.desc)).at(-1);
+  if (apk) {
+    const next = new Date(`${apk.date}T12:00`); next.setFullYear(next.getFullYear() + 1);
+    const monthsLeft = Math.round((next - now) / (30.44 * 864e5));
+    facts.push({ emo: '🔍', text: monthsLeft > 0 ? `Volgende APK over zo'n ${monthsLeft} maand${monthsLeft === 1 ? '' : 'en'}` : 'De APK is (bijna) weer aan de beurt!' });
+  }
+  const monthCount = months.size;
+  if (monthCount >= 2) facts.push({ emo: '📅', text: `Gemiddeld € ${Math.round((fixed + fuel) / monthCount)} per maand voor de Polo` });
+  if (km) facts.push({ emo: '🚗', text: `Per stel per maand ± € ${Math.round((fixed + fuel) / Math.max(1, monthCount) / 2)}: goedkoper dan een eigen auto 😉` });
+
+  return {
+    km, fuel, fixed, total: fuel + fixed,
+    perKmFuel: km ? fuel / km : null, perKmAll: km ? (fuel + fixed) / km : null,
+    cats: [...cats.values()].filter((c) => c.total > 0).sort((a, b) => b.total - a.total),
+    months: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)),
+    settle, debtor, creditor, amount, facts,
+  };
 }

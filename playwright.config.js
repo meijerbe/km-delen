@@ -19,7 +19,7 @@ export default defineConfig({
   webServer: {
     command: 'node scripts/dev-server.js',
     url: `http://localhost:${port}`,
-    env: { PORT: String(port), GROUP_CODE: 'test' },
+    env: { PORT: String(port), GROUP_CODE: 'test', COSTS_FIXTURE: 'e2e/fixtures/costs.json' },
     reuseExistingServer: !process.env.CI,
   },
 });

@@ -7,24 +7,36 @@ import { handle, handleImport, health } from '../lib/handler.js';
 import { memoryStore } from '../lib/store.js';
 
 // ---------- nagebootste Google Sheet + Apps Script ----------
-function fakeAppsScript(initial) {
-  const grid = initial.map((r) => [...r]);
+function makeSheet(grid) {
+  const formats = {};
   const width = () => Math.max(...grid.map((r) => r.length));
   const range = (row, col, nr = 1, nc = 1) => ({
     getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => grid[row - 1 + i]?.[col - 1 + j] ?? '')),
     setValues: (vals) => vals.forEach((r, i) => r.forEach((v, j) => { (grid[row - 1 + i] ||= [])[col - 1 + j] = v; })),
     setValue: (v) => { (grid[row - 1] ||= [])[col - 1] = v; },
+    getNumberFormat: () => formats[`${row},${col}`] || 'General',
+    setNumberFormat: (f) => { formats[`${row},${col}`] = f; },
   });
-  const sheet = {
+  return {
+    formats,
     getRange: range,
     getLastRow: () => grid.length,
     getLastColumn: () => width(),
     getDataRange: () => range(1, 1, grid.length, width()),
     deleteRow: (r) => grid.splice(r - 1, 1),
   };
+}
+
+function fakeAppsScript(initial, costsInitial = [['Kosten', 'Beschrijving', 'Datum', 'Betaald door']]) {
+  const grid = initial.map((r) => [...r]);
+  const costsGrid = costsInitial.map((r) => [...r]);
+  const sheet = makeSheet(grid), costsSheet = makeSheet(costsGrid);
   const sandbox = {
     SpreadsheetApp: {
-      openById: (id) => { if (id !== 'SHEETID') throw new Error('onbekend id'); return { getSheetByName: (n) => (n === 'form_data' ? sheet : null) }; },
+      openById: (id) => {
+        if (id !== 'SHEETID') throw new Error('onbekend id');
+        return { getSheetByName: (n) => ({ form_data: sheet, 'Overige kosten': costsSheet })[n] || null };
+      },
       getActive: () => { throw new Error('los script heeft geen actieve spreadsheet'); },
     },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
@@ -43,7 +55,7 @@ function fakeAppsScript(initial) {
       : sandbox.doGet({ parameter: Object.fromEntries(u.searchParams) });
     return new Response(text, { status: 200 });
   };
-  return { grid, fetch, cfg: { url: 'https://script.example/exec', token: 'tok', fetch } };
+  return { grid, costsGrid, costsSheet, fetch, cfg: { url: 'https://script.example/exec', token: 'tok', fetch, costs: true } };
 }
 
 // Echte koppen van form_data
@@ -176,4 +188,30 @@ test('ingelezen ritten met stand houden hun km; de volgende app-rit rekent vanaf
   const list = (await (await handle(req('GET', '/api/entries'), ctx)).json()).entries;
   assert.deepEqual(list.filter((e) => e.type === 'rit').map((e) => e.km).sort((a, b) => a - b), [7, 12, 74, 207]);
   assert.equal(sheet.grid.find((r) => r[ID] === 'n')[3], 45300);      // stand ook in de sheet
+});
+
+test('kosten uit de app komen in Overige kosten, onder de laatste kostenregel, met opmaak van erboven', async () => {
+  const sheet = fakeAppsScript(SHEET_ROWS, [
+    ['Kosten', 'Beschrijving', 'Datum', 'Betaald door', '', '', '', ''],
+    [13.1, 'RDW', new Date(2026, 3, 17), 'Klein', '', '', '', ''],
+    [153.5, 'Centraal beheer', new Date(2026, 3, 22), 'Klein', '', '', '', 2583.02],
+    ['', '', '', '', '', '', '', 1291.51],                                   // subtotaal zonder bedrag
+  ]);
+  sheet.costsSheet.formats['3,1'] = '"€"#,##0.00';
+  const store = memoryStore();
+  const ctx = { code: 'c', store: () => store, sheet: sheet.cfg };
+  const kost = { id: 'k1', type: 'kost', date: '2026-11-20', t: 1, hh: 'Groot', cost: 30, desc: 'Voorlampen vervangen', upd: 10 };
+  await handle(req('POST', '/api/entries', { puts: [kost] }), ctx);
+  const g = sheet.costsGrid;
+  assert.equal(g[0][8], 'App-id');
+  assert.deepEqual(g[3].slice(0, 4).map((v) => (v instanceof Date ? v.toDateString() : v)), [30, 'Voorlampen vervangen', new Date(2026, 10, 20).toDateString(), 'Groot']);
+  assert.equal(g[3][7], 1291.51);                                            // subtotaal blijft staan
+  assert.equal(g[3][8], 'k1');
+  assert.equal(sheet.costsSheet.formats['4,1'], '"€"#,##0.00');
+  assert.equal(sheet.grid.length, SHEET_ROWS.length);                        // niets in form_data
+
+  await handle(req('POST', '/api/entries', { puts: [{ ...kost, cost: 35, upd: 11 }] }), ctx);
+  assert.equal(g[3][0], 35);
+  await handle(req('POST', '/api/entries', { dels: [{ id: 'k1', upd: 12 }] }), ctx);
+  assert.ok(!g.some((r) => r[8] === 'k1'));
 });

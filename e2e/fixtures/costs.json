@@ -1,0 +1,9 @@
+[
+  {"id":"ka","type":"kost","date":"2026-04-17","cost":13.1,"desc":"RDW - auto overzetten","hh":"Klein","src":"sheet"},
+  {"id":"kb","type":"kost","date":"2026-05-18","cost":170,"desc":"Centraal beheer - periode 17/5 - 17/6","hh":"Klein","src":"sheet"},
+  {"id":"kc","type":"kost","date":"2026-06-04","cost":231,"desc":"APK","hh":"Klein","src":"sheet"},
+  {"id":"kd","type":"kost","date":"2026-07-08","cost":380,"desc":"Nieuwe voorruit","hh":"Klein","src":"sheet"},
+  {"id":"ke","type":"kost","date":"2026-10-30","cost":28.5,"desc":"Parkeervergunning oktober t/m december","hh":"Klein","src":"sheet"},
+  {"id":"kf","type":"kost","date":"2026-11-17","cost":181,"desc":"Centraal beheer - periode 17/11 - 17/12","hh":"Klein","src":"sheet"},
+  {"id":"kg","type":"kost","date":"2026-11-21","cost":129,"desc":"Belastingen 14 oktober 2026 t/m 13 januari 2027","hh":"Klein","src":"sheet"}
+]

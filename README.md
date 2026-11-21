@@ -36,6 +36,16 @@ De spreadsheet is van een werkaccount dat geen web-apps mag publiceren, dus het 
 
 Het script voegt in `form_data` een kolom **App-id** toe; daarmee worden wijzigingen en verwijderingen in de app ook in de sheet doorgevoerd. Lukt het schrijven naar de sheet even niet, dan gaat het mee met de volgende wijziging of de health-check.
 
+### Kosten
+
+Het tabblad **Kosten** leest *Overige kosten* rechtstreeks uit de (openbaar gedeelde) spreadsheet via Google's gviz-uitvoer (`SPREADSHEET_ID` in Vercel). Het laat zien:
+
+- de **afrekening**: brandstof naar verhouding van de km, vaste kosten 50/50, min wat elk stel al betaalde;
+- wat een km kost (alleen brandstof en alles meegerekend), de verdeling per categorie en per maand;
+- Polo-weetjes (verzekering per dag, duurste klus, wegenbelasting, volgende APK).
+
+Kosten die je in de app invoert, gaan naar *Overige kosten* zodra het script is bijgewerkt en `SHEET_COSTS=1` in Vercel staat; tot die tijd wachten ze in de database.
+
 De workflow *Database wakker houden* roept elke drie dagen `/api/health` aan, zodat Supabase het gratis project niet pauzeert.
 
 Daarna gaat elke push naar `main` automatisch live en krijgt elke pull request een eigen preview-link. GitHub Actions draait bij elke push de tests.

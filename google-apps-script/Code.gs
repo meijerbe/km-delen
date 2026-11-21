@@ -12,6 +12,7 @@
  */
 
 const SHEET_NAME = 'form_data';
+const COSTS_NAME = 'Overige kosten';
 const ID_HEADER = 'App-id';
 
 function doPost(e) {
@@ -24,7 +25,11 @@ function doPost(e) {
     const sheet = sheet_();
     const cols = columns_(sheet);
     const results = (body.ops || []).map(function (op) {
-      try { return op.op === 'delete' ? remove_(sheet, cols, op.id) : upsert_(sheet, cols, op.entry); }
+      try {
+        if (op.op === 'delete') return remove_(sheet, cols, op.id);
+        if (op.entry && op.entry.type === 'kost') return upsertCost_(op.entry);
+        return upsert_(sheet, cols, op.entry);
+      }
       catch (err) { return { id: op.id || (op.entry && op.entry.id), ok: false, error: String(err) }; }
     });
     return json_({ ok: true, results: results });
@@ -54,11 +59,14 @@ function checkToken_(t) {
   return !!expected && t === expected;
 }
 
-function sheet_() {
+function book_() {
   const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-  const book = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActive();
-  const s = book.getSheetByName(SHEET_NAME);
-  if (!s) throw new Error('Tabblad ' + SHEET_NAME + ' niet gevonden');
+  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActive();
+}
+
+function sheet_(name) {
+  const s = book_().getSheetByName(name || SHEET_NAME);
+  if (!s) throw new Error('Tabblad ' + (name || SHEET_NAME) + ' niet gevonden');
   return s;
 }
 
@@ -134,9 +142,64 @@ function yesNo_(sheet, cols) {
 }
 
 function remove_(sheet, cols, id) {
-  const row = findRow_(sheet, cols, id);
-  if (row) sheet.deleteRow(row);
-  return { id: id, ok: true, removed: !!row };
+  var row = findRow_(sheet, cols, id);
+  if (row) { sheet.deleteRow(row); return { id: id, ok: true, removed: true }; }
+  const costs = book_().getSheetByName(COSTS_NAME);
+  if (costs) {
+    const cc = costColumns_(costs);
+    row = findRow_(costs, cc, id);
+    if (row) { costs.deleteRow(row); return { id: id, ok: true, removed: true }; }
+  }
+  return { id: id, ok: true, removed: false };
+}
+
+// ---------- Overige kosten ----------
+
+function costColumns_(sheet) {
+  const header = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
+  const find = function (re) {
+    for (var i = 0; i < header.length; i++) if (re.test(String(header[i]).trim())) return i + 1;
+    return 0;
+  };
+  const cols = {
+    cost: find(/^(kosten|bedrag)/i), desc: find(/^(beschrijving|omschrijving)/i),
+    date: find(/^datum/i), hh: find(/betaald\s*door/i), id: find(new RegExp('^' + ID_HEADER + '$', 'i')),
+  };
+  if (!cols.id) {
+    cols.id = sheet.getLastColumn() + 1;
+    sheet.getRange(1, cols.id).setValue(ID_HEADER);
+  }
+  return cols;
+}
+
+/** Laatste regel met een bedrag (de kolommen ernaast bevatten soms subtotalen). */
+function lastCostRow_(sheet, cols) {
+  const last = sheet.getLastRow();
+  if (last < 2) return 1;
+  const vals = sheet.getRange(2, cols.cost, last - 1, 1).getValues();
+  for (var i = vals.length - 1; i >= 0; i--) if (String(vals[i][0]).trim() !== '') return i + 2;
+  return 1;
+}
+
+function upsertCost_(e) {
+  const sheet = sheet_(COSTS_NAME);
+  const cols = costColumns_(sheet);
+  var row = findRow_(sheet, cols, e.id);
+  const isNew = !row;
+  if (isNew) row = lastCostRow_(sheet, cols) + 1;
+  const p = e.date.split('-').map(Number);
+  if (cols.cost) sheet.getRange(row, cols.cost).setValue(e.cost);
+  if (cols.desc) sheet.getRange(row, cols.desc).setValue(e.desc || '');
+  if (cols.date) sheet.getRange(row, cols.date).setValue(new Date(p[0], p[1] - 1, p[2]));
+  if (cols.hh) sheet.getRange(row, cols.hh).setValue(e.hh);
+  sheet.getRange(row, cols.id).setValue(e.id);
+  if (isNew && row > 2) {
+    // Opmaak (€, datum) van de regel erboven overnemen
+    [cols.cost, cols.date].forEach(function (c) {
+      if (c) sheet.getRange(row, c).setNumberFormat(sheet.getRange(row - 1, c).getNumberFormat());
+    });
+  }
+  return { id: e.id, ok: true, row: row };
 }
 
 function json_(obj) {

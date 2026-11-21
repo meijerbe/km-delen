@@ -136,3 +136,44 @@ test('offline invoer wordt later alsnog gedeeld', async ({ browser }) => {
   await expect(p.locator('#syncTxt')).toHaveText('Gedeeld');
   await ctx.close();
 });
+
+test('kosten: afrekening, km-prijs, categorieën en kosten toevoegen', async ({ browser }) => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  const errors = [];
+  p.on('pageerror', (e) => errors.push(e.message));
+  await login(p);
+  await expect(p.locator('#gate')).toBeHidden();
+  // 400 km Groot, 100 km Klein; Groot tankte 100
+  for (const [hh, km] of [['Groot', '400'], ['Klein', '100']]) {
+    await p.click('#btnManual'); await p.click(`#shHH >> text=${hh}`); await p.click('#shMode >> text=Aantal km');
+    await p.fill('#shDate', '2026-10-01'); await p.fill('#shKm', km); await p.click('#shSave');
+  }
+  await tab(p, 'tank'); await p.click('#pickTank >> text=Groot'); await p.fill('#tCost', '100'); await p.fill('#tLp', '2,10'); await p.click('#btnTank');
+  await tab(p, 'kosten');
+  await expect(p.locator('#costsView')).toContainText('Waar gaat het geld heen?');
+  await expect(p.locator('#costsView .legend')).toContainText('Verzekering');
+  await expect(p.locator('#costsView .legend')).toContainText('Onderhoud');
+  await expect(p.locator('#costsView .legend')).toContainText('Brandstof');
+  await expect(p.locator('#costsView .facts')).toContainText('Duurste klus: nieuwe voorruit');
+  // De vaste kosten (1132,60) zijn allemaal door Klein betaald ⇒ Groot betaalt Klein
+  await expect(p.locator('#costsView')).toContainText('Groot betaalt Klein');
+  const euros = async () => parseFloat((await p.locator('#costsView .amount').innerText()).replace(/[^\d,]/g, '').replace(',', '.'));
+  const before = await euros();
+
+  await p.click('#btnAddCost');
+  await p.click('#ctHH >> text=Groot');
+  await p.fill('#ctCost', '45,50'); await p.fill('#ctDesc', 'Wasstraat');
+  await expect(p.locator('#ctCat')).toHaveText('🔧 Onderhoud');
+  await p.click('#ctSave');
+  await expect(p.locator('#pop')).toContainText('€ 45,50 genoteerd');
+  await expect(p.locator('#costsView .item', { hasText: 'Wasstraat' })).toContainText('app');
+  // Groot betaalt zelf 45,50 waarvan de helft voor Klein ⇒ 22,75 minder
+  await expect.poll(euros).toBeCloseTo(before - 22.75, 2);
+  await expect(p.locator('#syncTxt')).toHaveText('Gedeeld');
+  // export voor Excel blijft alleen ritten en tankbeurten
+  await tab(p, 'overzicht');
+  await expect(p.locator('#overview .item', { hasText: 'Wasstraat' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+  await ctx.close();
+});
