@@ -20,7 +20,7 @@ const local = {
 let entries = new Map(local.get(KEY.entries, []).map((e) => [e.id, e]));
 let outbox = local.get(KEY.outbox, []);            // [{ kind:'put', id, e } | { kind:'del', id, upd }]
 let code = local.get(KEY.code, '');
-let settings = { factor: 1, lastHH: 'Klein', mode: 'km', ...local.get(KEY.settings, {}) };
+let settings = { lastHH: 'Klein', mode: 'km', ...local.get(KEY.settings, {}) };
 let active = local.get(KEY.active, null);
 
 const all = () => [...entries.values()];
@@ -233,7 +233,7 @@ function startRide() {
 function stopRide() {
   if (!active) return;
   stopWatch();
-  const km = (active.m / 1000) * (settings.factor || 1);
+  const km = active.m / 1000;
   openSheet({
     mode: 'new', type: 'rit', id: active.id, hh: active.hh, date: isoDate(active.start), t: active.start,
     km: Math.round(km), bij: lastBij(active.hh), src: 'gps', dur: Date.now() - active.start, rideMode: 'km',
@@ -265,6 +265,7 @@ function openSheet(o) {
   $('shCancel').textContent = o.mode === 'new' ? 'Weggooien' : 'Annuleren';
   $('bijList').innerHTML = [...new Set(all().map((e) => e.bij).filter(Boolean))].map((b) => `<option value="${esc(b)}">`).join('');
   sheet.rideMode = o.rideMode || (o.stand != null ? 'stand' : settings.mode);
+  $('shAll').checked = !o.vast;
   drawSheetPick(); drawMode();
   $('sheetBg').classList.add('on');
 }
@@ -279,8 +280,9 @@ function drawMode() {
   $('shMode').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.m === sheet.rideMode));
   $('shStandBox').style.display = stand ? 'block' : 'none';
   const counter = stand ? sheetCounter() : null;
-  // Zonder bekende vorige stand moet het aantal km er ook bij (eerste stand ooit).
-  $('shKmBox').style.display = !stand || counter == null ? 'block' : 'none';
+  // Km zelf invullen: zonder stand, bij de eerste stand ooit, of als niet alle km van deze rit zijn.
+  $('shAllBox').style.display = stand && counter != null ? 'flex' : 'none';
+  $('shKmBox').style.display = !stand || counter == null || !$('shAll').checked ? 'block' : 'none';
   if (stand) updStandHint(counter);
 }
 function updStandHint(counter = sheetCounter()) {
@@ -289,7 +291,11 @@ function updStandHint(counter = sheetCounter()) {
   if (counter == null) { h.textContent = 'Eerste kilometerstand: vul hieronder ook het aantal km van deze rit in.'; return; }
   if (!(s > 0)) { h.textContent = `Vorige stand ≈ ${nf0.format(counter)}`; return; }
   const d = Math.round(s - counter);
-  h.textContent = `${nf0.format(counter)} → ${nf0.format(s)} = ${nf0.format(d)} km`;
+  h.textContent = `${nf0.format(counter)} → ${nf0.format(s)} = ${nf0.format(d)} km sinds de vorige stand`;
+  if (!$('shAll').checked && d >= 0) {
+    const own = parseNum($('shKm').value);
+    if (own >= 0 && own <= d) h.textContent += ` · ${nf0.format(d - own)} km telt niet mee (samen of vol-naar-vol)`;
+  }
   if (d < 0 || d > 2000) h.classList.add('err');
 }
 $('shMode').querySelectorAll('button').forEach((b) => b.onclick = () => {
@@ -297,6 +303,8 @@ $('shMode').querySelectorAll('button').forEach((b) => b.onclick = () => {
   if (b.dataset.m === 'stand') $('shStand').focus();
 });
 $('shStand').oninput = () => updStandHint();
+$('shAll').onchange = () => drawMode();
+$('shKm').addEventListener('input', () => { if (sheet?.rideMode === 'stand') updStandHint(); });
 $('shDate').onchange = () => { if (sheet?.type === 'rit') drawMode(); };
 function closeSheet() { $('sheetBg').classList.remove('on'); sheet = null; }
 
@@ -314,15 +322,17 @@ $('shSave').onclick = () => {
       if (!(stand > 0)) return toast('Vul de kilometerstand in');
       stand = Math.round(stand);
       const counter = sheetCounter();
-      if (counter != null) {
-        km = stand - counter;
-        if (km < 0) return toast(`Stand is lager dan de vorige (${nf0.format(counter)})`);
-      }
+      if (counter != null && stand < counter) return toast(`Stand is lager dan de vorige (${nf0.format(counter)})`);
+      if (counter != null && $('shAll').checked) km = stand - counter;
+      else if (counter != null && km > stand - counter) return toast(`Meer km dan sinds de vorige stand (${nf0.format(stand - counter)})`);
     }
     if (!(km >= 0)) return toast('Vul het aantal kilometers in');
+    // Niet alle km sinds de vorige stand: km staan vast, de stand zet alleen de teller.
+    const vast = sheet.rideMode === 'stand' && !$('shAll').checked;
     e = { ...base, id: sheet.id || newId(), type: 'rit', date, t, hh: sheet.hh, km: Math.round(km),
       src: sheet.src || base.src || 'handmatig', ...(sheet.dur ? { dur: sheet.dur } : {}) };
     if (stand != null) e.stand = stand; else delete e.stand;
+    if (vast || (stand == null && base.vast)) e.vast = true; else delete e.vast;
     if (bij) e.bij = bij; else delete e.bij;
   } else {
     const cost = parseNum($('shCost').value), lp = parseNum($('shLp').value);
@@ -414,7 +424,7 @@ function renderActive() {
   if (!active) return;
   const pill = $('actHH'); pill.textContent = active.hh; pill.className = `pill ${active.hh}`;
   showCar('driveCar', active.hh);
-  $('actKm').textContent = nf1.format((active.m / 1000) * (settings.factor || 1));
+  $('actKm').textContent = nf1.format(active.m / 1000);
   const ms = Date.now() - active.start;
   $('actTime').textContent = fmtDur(ms);
   $('actSpeed').textContent = curSpeed != null ? nf0.format(curSpeed) : '–';
@@ -507,7 +517,7 @@ function renderCosts() {
           <tr><td colspan="2" style="padding-top:8px;color:var(--ink);font-weight:800">${h}</td></tr>
           <tr><td>⛽ brandstof getankt − aandeel naar km</td><td>${sign(settle[h].fuelPart)}</td></tr>
           <tr><td>🧾 vaste kosten betaald − helft</td><td>${sign(settle[h].fixedPart)}</td></tr>`).join('')}
-      </table><p style="margin:8px 0 0">Brandstof: ${eur.format(ins.fuel)} verdeeld naar ${nf0.format(ins.km)} km. Vaste kosten: ${eur.format(ins.fixed)} gedeeld door twee.</p></div>
+      </table><p style="margin:8px 0 0">Brandstof: ${eur.format(ins.fuel)} verdeeld naar ${nf0.format(ins.km)} km. Vaste kosten: ${eur.format(ins.fixed)} gedeeld door twee. Ritten en tankbeurten die jullie niet invullen (samen op pad, vol-naar-vol) tellen niet mee.</p></div>
     </div>
 
     <div class="card">
@@ -614,16 +624,10 @@ $('btnSheetImport').onclick = async () => {
     toast(err instanceof TypeError ? 'Geen verbinding' : err.message);
   } finally { b.disabled = false; b.textContent = 'Formulier-invoer ophalen'; }
 };
-$('btnSaveSet').onclick = () => {
-  const f = parseNum($('factor').value || '1');
-  if (!(f > 0.8 && f < 1.2)) return toast('Kies een factor tussen 0,80 en 1,20');
-  settings.factor = f; saveSettings(); toast('Opgeslagen');
-};
 document.querySelectorAll('nav button').forEach((b) => {
   b.onclick = () => {
     document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
     document.querySelectorAll('.view').forEach((v) => v.classList.toggle('on', v.id === `v-${b.dataset.v}`));
-    if (b.dataset.v === 'inst') $('factor').value = toInput(settings.factor || 1);
     if (b.dataset.v === 'kosten') loadCosts();
     render(); window.scrollTo(0, 0);
   };

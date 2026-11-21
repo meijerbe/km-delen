@@ -59,7 +59,7 @@ test('rit met GPS, achteraf met kilometerstand, tanken, export en delen tussen t
   await a.click('#shMode >> text=Kilometerstand');
   await expect(a.locator('#shKmBox')).toBeHidden();
   await a.fill('#shStand', '10080');
-  await expect(a.locator('#shStandHint')).toHaveText('10.002 → 10.080 = 78 km');
+  await expect(a.locator('#shStandHint')).toHaveText('10.002 → 10.080 = 78 km sinds de vorige stand');
   await a.click('#shSave');
   await expect(a.locator('#counterHint')).toHaveText('Kilometerteller nu ≈ 10.080');
 
@@ -175,5 +175,35 @@ test('kosten: afrekening, km-prijs, categorieën en kosten toevoegen', async ({ 
   await tab(p, 'overzicht');
   await expect(p.locator('#overview .item', { hasText: 'Wasstraat' })).toHaveCount(0);
   expect(errors).toEqual([]);
+  await ctx.close();
+});
+
+test('kilometerstand met niet-ingevulde km ertussen (samen of vol-naar-vol)', async ({ browser }) => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  await login(p);
+  await expect(p.locator('#gate')).toBeHidden();
+  const standRit = async (date, stand, km) => {
+    await p.click('#btnManual'); await p.click('#shHH >> text=Klein'); await p.click('#shMode >> text=Kilometerstand');
+    await p.fill('#shDate', date); await p.fill('#shStand', stand);
+    if (km != null) {
+      if (await p.locator('#shAllBox').isVisible()) await p.uncheck('#shAll');
+      await p.fill('#shKm', km);
+    }
+  };
+  // Eerste stand ooit in deze reeks (vroeg in 2025, vóór de andere testritten)
+  await standRit('2025-01-01', '20000', '10'); await p.click('#shSave');
+  // 100 km gereden, maar maar 30 voor deze rit: 70 km samen/vol-naar-vol
+  await standRit('2025-01-05', '20100', '30');
+  await expect(p.locator('#shStandHint')).toHaveText('20.000 → 20.100 = 100 km sinds de vorige stand · 70 km telt niet mee (samen of vol-naar-vol)');
+  await p.click('#shSave');
+  // Volgende rit: alles van deze rit, rekent vanaf 20.100
+  await standRit('2025-01-09', '20150', null);
+  await expect(p.locator('#shStandHint')).toHaveText('20.100 → 20.150 = 50 km sinds de vorige stand');
+  await expect(p.locator('#shKmBox')).toBeHidden();
+  await p.click('#shSave');
+  await tab(p, 'overzicht');
+  await expect(p.locator('#overview .item', { hasText: 'stand 20.100' })).toContainText('30 km');
+  await expect(p.locator('#overview .item', { hasText: 'stand 20.150' })).toContainText('50 km');
   await ctx.close();
 });
