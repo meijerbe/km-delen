@@ -160,13 +160,14 @@ const osm = await overpass(`[out:json][timeout:80][bbox:${bb}];
   way["natural"~"wood|scrub|grassland"];
   node["natural"="tree"];
   way["railway"~"rail|tram|light_rail|subway"];
+  node["shop"~"bakery|pastry|confectionery"]; way["shop"~"bakery|pastry|confectionery"];
 );
 out geom;`);
 console.log(`OSM: ${osm.elements.length} elementen`);
 
 const out = {
   center, half: HALF, rd: [Math.round(cx), Math.round(cy)],
-  buildings: [], roads: [], water: [], green: [], trees: [], rails: [],
+  buildings: [], roads: [], water: [], green: [], trees: [], rails: [], shops: [],
   attribution: '© OpenStreetMap-bijdragers (ODbL) · 3D BAG (TU Delft, CC BY 4.0)',
   built: new Date().toISOString(),
 };
@@ -180,6 +181,15 @@ const polysOf = (el) => {
 
 for (const el of osm.elements) {
   const t = el.tags || {};
+  if (t.shop && /bakery|pastry|confectionery/.test(t.shop)) {
+    const g = el.type === 'node' ? [el.lat, el.lon] : el.geometry ? [el.geometry.reduce((a, q) => a + q.lat, 0) / el.geometry.length, el.geometry.reduce((a, q) => a + q.lon, 0) / el.geometry.length] : null;
+    if (g) {
+      const [x, y] = local(g[0], g[1]);
+      out.shops.push({ name: t.name || '(bakkerij)', kind: t.shop, x: r1(x), y: r1(y), addr: [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ') });
+      console.log(`Bakkerij: ${t.name || '?'} (${t.shop}) ${[t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ')} → ${x.toFixed(0)}, ${y.toFixed(0)} m${Math.abs(x) <= HALF && Math.abs(y) <= HALF ? '' : ' (buiten het blok)'}`);
+    }
+    continue;
+  }
   if (el.type === 'node' && t.natural === 'tree') {
     const [x, y] = local(el.lat, el.lon);
     if (Math.abs(x) < HALF - 1 && Math.abs(y) < HALF - 1) out.trees.push([r1(x), r1(y)]);
@@ -238,6 +248,7 @@ for (const b of out.buildings) {
   if (!b.h) b.h = 10;                     // terugval: ± 3 bouwlagen
   delete b.bag;
 }
-console.log(`Resultaat: ${out.buildings.length} gebouwen (${out.buildings.filter((b) => b.src === 'bag').length} uit 3D BAG), ${out.roads.length} wegdelen, ${out.water.length} water, ${out.green.length} groen, ${out.trees.length} bomen, ${out.rails.length} spoor`);
+out.shops = out.shops.filter((s) => Math.abs(s.x) <= HALF + 40 && Math.abs(s.y) <= HALF + 40);
+console.log(`Resultaat: ${out.shops.length} bakkerijen, ${out.buildings.length} gebouwen (${out.buildings.filter((b) => b.src === 'bag').length} uit 3D BAG), ${out.roads.length} wegdelen, ${out.water.length} water, ${out.green.length} groen, ${out.trees.length} bomen, ${out.rails.length} spoor`);
 writeFileSync(new URL('../public/buurt.json', import.meta.url), JSON.stringify(out));
 console.log('Geschreven: public/buurt.json');
