@@ -5,8 +5,13 @@ import { writeFileSync } from 'node:fs';
 
 const HALF = 250;                         // m, halve zijde van het vierkant
 const STREETS = ['Bergselaan', 'Bergpolderstraat'];
-const FALLBACK_CENTER = { lat: 51.93667, lon: 4.46944 };
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+const FALLBACK_CENTER = { lat: 51.934131, lon: 4.466438 };   // gevonden kruising (nov 2026)
+const OVERPASS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+];
 const UA = { 'User-Agent': 'km-delen diorama (github.com/meijerbe/km-delen)' };
 
 // ---------- coördinaten ----------
@@ -66,12 +71,18 @@ const area = (p) => Math.abs(p.reduce((s, [x, y], i) => { const [x2, y2] = p[(i 
 // ---------- ophalen ----------
 async function overpass(q) {
   let last;
-  for (const url of OVERPASS) {
-    try {
-      const res = await fetch(url, { method: 'POST', headers: { ...UA, 'content-type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(q)}`, signal: AbortSignal.timeout(180000) });
-      if (!res.ok) throw new Error(`${url} → ${res.status}`);
-      return await res.json();
-    } catch (e) { last = e; console.warn('overpass', e.message); }
+  for (let round = 0; round < 3; round++) {
+    for (const url of OVERPASS) {
+      try {
+        const res = await fetch(url, { method: 'POST', headers: { ...UA, 'content-type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(q)}`, signal: AbortSignal.timeout(90000) });
+        if (!res.ok) throw new Error(`${url} → ${res.status}`);
+        const json = await res.json();
+        console.log(`overpass ok via ${url}`);
+        return json;
+      } catch (e) { last = e; console.warn('overpass', url, e.message); }
+    }
+    console.warn(`ronde ${round + 1} mislukt, even wachten…`);
+    await new Promise((r) => setTimeout(r, 20000));
   }
   throw last;
 }
@@ -136,7 +147,7 @@ const local = (lat, lon) => { const [x, y] = toRD(lat, lon); return [x - cx, y -
 const dLat = (HALF + 60) / 111320, dLon = (HALF + 60) / (111320 * Math.cos(center.lat * Math.PI / 180));
 const bb = [center.lat - dLat, center.lon - dLon, center.lat + dLat, center.lon + dLon].map((v) => v.toFixed(6)).join(',');
 
-const osm = await overpass(`[out:json][timeout:180][bbox:${bb}];
+const osm = await overpass(`[out:json][timeout:80][bbox:${bb}];
 (
   way["highway"];
   way["building"]; relation["building"];

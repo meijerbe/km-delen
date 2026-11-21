@@ -11,10 +11,13 @@
     "dev": "node scripts/dev-server.js",
     "test": "node --test test/*.test.js",
     "test:e2e": "playwright test",
-    "check": "node --check public/app.js && node --check public/core.js"
+    "check": "node --check public/app.js && node --check public/core.js",
+    "vendor": "esbuild scripts/vendor-three.mjs --bundle --format=esm --minify --legal-comments=eof --outfile=public/vendor/three-bundle.js",
+    "buurt": "node scripts/build-buurt.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.65.1"
+    "@playwright/test": "^1.65.1",
+    "three": "^0.187.0"
   },
   "dependencies": {
     "postgres": "^4.1.1"
