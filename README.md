@@ -16,7 +16,7 @@ Web-app om bij een gedeelde auto per rit bij te houden wie (stel **Klein** of **
 ## Live zetten op Vercel (eenmalig)
 
 1. **Vercel → Add New → Project** → importeer `meijerbe/km-delen`. Framework preset: *Other*. Verder niets invullen.
-2. **Storage → Create Database → Neon (Postgres)** en koppel die aan dit project. Dit zet `DATABASE_URL`; de tabel wordt bij de eerste aanroep zelf aangemaakt.
+2. **Storage → Create Database → Neon (Postgres)**, regio *Frankfurt (eu-central-1)*, en koppel die aan dit project. Dit zet `DATABASE_URL`; de tabel wordt bij de eerste aanroep zelf aangemaakt.
 3. **Settings → Environment Variables**: `GROUP_CODE` = een code die jullie vieren afspreken (bijv. een zin van drie woorden).
 4. **Deployments → Redeploy**, zodat de variabelen actief worden.
 5. Open de link op de telefoon in Safari of Chrome, vul de groepscode in en kies *Zet op beginscherm*.
