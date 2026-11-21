@@ -1,9 +1,11 @@
 /**
  * km-delen ↔ Google Sheet
  *
- * Plak dit in de spreadsheet via Uitbreidingen → Apps Script.
- * Projectinstellingen → Scripteigenschappen: TOKEN = (de code uit de installatie-instructie).
- * Implementeren → Nieuwe implementatie → Web-app, uitvoeren als: ik, toegang: iedereen.
+ * Los script in je eigen Google-account (script.google.com → New project), of gekoppeld aan de sheet.
+ * Project Settings → Script Properties:
+ *   TOKEN          = de code uit de installatie-instructie (SHEET_TOKEN in Vercel)
+ *   SPREADSHEET_ID = het ID uit de URL van de spreadsheet (niet nodig als het script aan de sheet vastzit)
+ * Deploy → New deployment → Web app, Execute as: Me, Who has access: Anyone.
  *
  * - doPost: de app zet ritten/tankbeurten in het tabblad form_data (bijwerken of verwijderen via kolom "App-id").
  * - doGet:  levert de regels van form_data, zodat de app formulier-invoer kan inlezen.
@@ -53,7 +55,9 @@ function checkToken_(t) {
 }
 
 function sheet_() {
-  const s = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
+  const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+  const book = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActive();
+  const s = book.getSheetByName(SHEET_NAME);
   if (!s) throw new Error('Tabblad ' + SHEET_NAME + ' niet gevonden');
   return s;
 }

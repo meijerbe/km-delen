@@ -26,9 +26,11 @@ Web-app om bij een gedeelde auto per rit bij te houden wie (stel **Klein** of **
 
 De app schrijft elke rit en tankbeurt naar het tabblad `form_data`, net als het Google-formulier. Het tabblad Overview rekent dus gewoon door.
 
-1. Open de spreadsheet → **Uitbreidingen → Apps Script**, vervang de inhoud door [`google-apps-script/Code.gs`](google-apps-script/Code.gs) en sla op.
-2. **Projectinstellingen (tandwiel) → Scripteigenschappen → toevoegen**: `TOKEN` = dezelfde waarde als `SHEET_TOKEN` in Vercel.
-3. **Implementeren → Nieuwe implementatie → Web-app**. Uitvoeren als: *ik*, toegang: *iedereen*. Geef toestemming en kopieer de URL.
+De spreadsheet is van een werkaccount dat geen web-apps mag publiceren, dus het script staat los in een eigen Google-account en opent de sheet via het ID.
+
+1. [script.google.com](https://script.google.com) → **New project**, plak [`google-apps-script/Code.gs`](google-apps-script/Code.gs) en sla op.
+2. **Project Settings → Script Properties**: `TOKEN` = dezelfde waarde als `SHEET_TOKEN` in Vercel, `SPREADSHEET_ID` = het ID uit de URL van de spreadsheet.
+3. **Deploy → New deployment → Web app**. Execute as: *Me*, Who has access: *Anyone*. Geef toestemming en kopieer de URL.
 4. Zet in Vercel `SHEET_WEBHOOK_URL` = die URL en redeploy.
 5. In de app: **Instellingen → Formulier-invoer ophalen** leest de bestaande regels eenmalig in (en later nieuwe formulier-invoer; dubbele regels worden overgeslagen).
 

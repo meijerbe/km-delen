@@ -23,9 +23,12 @@ function fakeAppsScript(initial) {
     deleteRow: (r) => grid.splice(r - 1, 1),
   };
   const sandbox = {
-    SpreadsheetApp: { getActive: () => ({ getSheetByName: (n) => (n === 'form_data' ? sheet : null) }) },
+    SpreadsheetApp: {
+      openById: (id) => { if (id !== 'SHEETID') throw new Error('onbekend id'); return { getSheetByName: (n) => (n === 'form_data' ? sheet : null) }; },
+      getActive: () => { throw new Error('los script heeft geen actieve spreadsheet'); },
+    },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => 'tok' }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => ({ TOKEN: 'tok', SPREADSHEET_ID: 'SHEETID' })[k] ?? null }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (s) => ({ setMimeType: () => s }) },
     Session: { getScriptTimeZone: () => 'Europe/Amsterdam' },
     Utilities: { formatDate: (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` },
