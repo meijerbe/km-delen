@@ -103,6 +103,24 @@ export function car(hh) {
       <clipPath id="w1-${n}"><path d="${rear}"/></clipPath>
       <clipPath id="w2-${n}"><path d="${fwd}"/></clipPath>
     </defs>
+    <g class="scenery">
+      <g class="sc sc-tree"><rect x="-3" y="112" width="6" height="40" rx="2" fill="#A07B55"/><circle cx="0" cy="104" r="17" fill="#9ACB86"/><circle cx="11" cy="114" r="11" fill="#86BD73"/><circle cx="-10" cy="114" r="9" fill="#A9D495"/></g>
+      <g class="sc sc-mill">
+        <path d="M-7 152 L-4 96 H4 L7 152 Z" fill="#EDE6DA" stroke="#D5CBBB"/>
+        <path d="M-6 98 Q0 88 6 98 Z" fill="#C96F4F"/>
+        <g class="blades" style="transform-origin:0px 96px">
+          <path d="M0 96 L-2 66 L2 66 Z M0 96 L30 94 L30 98 Z M0 96 L2 126 L-2 126 Z M0 96 L-30 98 L-30 94 Z" fill="#B9A78E"/>
+          <circle cx="0" cy="96" r="2.5" fill="#7C6A55"/>
+        </g>
+      </g>
+      <g class="sc sc-sign"><rect x="-1.5" y="118" width="3" height="34" fill="#8C9399"/><rect x="-26" y="100" width="52" height="20" rx="4" fill="#2F7DD1"/><text x="0" y="114" text-anchor="middle" font-size="10" font-weight="800" fill="#fff" font-family="Nunito,sans-serif">Disco 🪩 3</text></g>
+      <g class="sc sc-bush"><circle cx="0" cy="146" r="9" fill="#A9D495"/><circle cx="10" cy="148" r="7" fill="#94C681"/></g>
+      <g class="sc sc-station">
+        <rect x="-34" y="102" width="68" height="8" rx="2" fill="#EE6C4D"/><rect x="-30" y="110" width="4" height="42" fill="#C7C0B5"/><rect x="26" y="110" width="4" height="42" fill="#C7C0B5"/>
+        <rect x="-9" y="124" width="14" height="28" rx="2" fill="#F2B33D"/><rect x="-6" y="128" width="8" height="6" rx="1" fill="#fff"/>
+        <text x="0" y="99" text-anchor="middle" font-size="9" font-weight="800" fill="#EE6C4D" font-family="Nunito,sans-serif">TANK</text>
+      </g>
+    </g>
     <g class="road">
       <rect x="0" y="152" width="300" height="22" rx="4" fill="#E9E4DA"/>
       <g class="dashes">${Array.from({ length: 9 }, (_, i) => `<rect x="${i * 44 - 20}" y="161" width="24" height="4" rx="2" fill="#fff"/>`).join('')}</g>
@@ -126,6 +144,13 @@ export function car(hh) {
       <path d="M62 133 a24 24 0 0 1 48 0 M198 133 a24 24 0 0 1 48 0" fill="#6E8CA3"/>
     </g>
     ${wheel(86)}${wheel(222)}
+    <g class="zzz" font-family="Nunito,sans-serif" font-weight="900" fill="#7FA7C9">
+      <text x="178" y="40" font-size="12">z</text><text x="188" y="30" font-size="15">z</text><text x="200" y="18" font-size="18">Z</text>
+    </g>
+    <g class="toet">
+      <path d="M232 22 h52 a8 8 0 0 1 8 8 v14 a8 8 0 0 1 -8 8 h-30 l-10 10 l2 -10 h-14 a8 8 0 0 1 -8 -8 v-14 a8 8 0 0 1 8 -8 z" fill="#fff" stroke="#2E2A26" stroke-width="2"/>
+      <text x="258" y="42" text-anchor="middle" font-size="14" font-weight="900" fill="#2E2A26" font-family="Nunito,sans-serif">TOET!</text>
+    </g>
   </svg>`;
 }
 

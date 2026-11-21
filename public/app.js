@@ -2,6 +2,7 @@ import {
   HOUSEHOLDS, trackStep, computeRides, counterBefore, totals, excelText, parseNum, newId,
 } from './core.js';
 import { car, duo, logo } from './art.js';
+import { startLine, stopLine, tankLine, compareLine, honk } from './fun.js';
 
 // ================= opslag op het toestel =================
 const KEY = {
@@ -47,6 +48,15 @@ let toastTimer;
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.classList.add('on');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), 2600);
+}
+let popTimer;
+/** Reactie van de poppetjes: duo + emoji + tekst, verdwijnt vanzelf. */
+function pop(hh, emo, title, sub = '', kind = 'wave') {
+  const el = $('pop');
+  $('popFaces').innerHTML = duo(hh, 56); $('popEmo').textContent = emo;
+  $('popTitle').textContent = title; $('popSub').textContent = sub;
+  el.className = `pop on ${kind}`;
+  clearTimeout(popTimer); popTimer = setTimeout(() => { el.className = 'pop'; }, 2800);
 }
 function confirmBox(title, text, yes, no) {
   return new Promise((resolve) => {
@@ -217,6 +227,7 @@ function startRide() {
   active = { id: newId(), start: Date.now(), hh: pickHH, m: 0, last: null };
   settings.lastHH = pickHH; saveSettings(); saveActive();
   render(); startWatch();
+  toast(startLine(pickHH));
 }
 function stopRide() {
   if (!active) return;
@@ -318,11 +329,12 @@ $('shSave').onclick = () => {
     e = { ...base, type: 'tank', date, t, hh: sheet.hh, cost: Math.round(cost * 100) / 100 };
     if (lp > 0) e.lp = lp; else delete e.lp;
   }
-  const wasNew = sheet.mode === 'new';
+  const wasNew = sheet.mode === 'new', wasManual = sheet.mode === 'manual';
   closeSheet();
   if (wasNew) { active = null; saveActive(); }
   putEntry(e);
-  toast(e.type === 'rit' ? `${e.km} km opgeslagen voor ${e.hh}` : 'Opgeslagen');
+  if (wasNew) { const l = stopLine(e.km, e.hh); pop(e.hh, '👋', l.title, l.sub); }
+  toast(wasNew ? `${e.km} km opgeslagen voor ${e.hh}` : wasManual ? `Bijgeschreven: ${e.km} km voor ${e.hh} ✍️` : 'Opgeslagen');
 };
 $('shCancel').onclick = async () => {
   if (sheet?.mode === 'new') {
@@ -355,7 +367,8 @@ $('btnTank').onclick = () => {
   if (date > today()) return toast('Datum ligt in de toekomst');
   putEntry({ id: newId(), type: 'tank', date, t: tFor(date), hh: tankHH, cost: Math.round(cost * 100) / 100, ...(lp > 0 ? { lp } : {}) });
   $('tCost').value = ''; $('tLp').value = ''; $('tDate').value = today(); updLiters();
-  toast(`Tankbeurt van ${eur.format(cost)} opgeslagen`);
+  const l = tankLine(cost, lp > 0 ? lp : null);
+  pop(tankHH, l.emo, l.title, l.sub, l.kind);
 };
 
 // ================= weergave =================
@@ -392,8 +405,9 @@ function renderIdle() {
   showCar('heroCar', pickHH);
   const list = all(), key = today().slice(0, 7), t = totals(list, key), { counter } = computeRides(list);
   $('counterHint').textContent = counter != null ? `Kilometerteller nu ≈ ${nf0.format(counter)}` : '';
+  const fun = compareLine(t.Klein + t.Groot);
   $('monthCard').innerHTML = `<div class="between"><b style="text-transform:capitalize">${monthLabel(key)}</b>
-    <span class="muted small">${t.ritten} ${t.ritten === 1 ? 'rit' : 'ritten'}</span></div>${totalsHTML(t)}`;
+    <span class="muted small">${t.ritten} ${t.ritten === 1 ? 'rit' : 'ritten'}</span></div>${totalsHTML(t)}${fun ? `<div class="fun">${fun}</div>` : ''}`;
 }
 function renderActive() {
   if (!active) return;
@@ -404,6 +418,15 @@ function renderActive() {
   $('actTime').textContent = fmtDur(ms);
   $('actSpeed').textContent = curSpeed != null ? nf0.format(curSpeed) : '–';
   $('actAvg').textContent = ms > 60000 && active.m > 100 ? nf0.format((active.m / ms) * 3600) : '–';
+  const kmNow = active.m / 1000;
+  $('driveCar').classList.toggle('sleepy', ms > 90 * 60000 || kmNow > 150);
+  const hundreds = Math.floor(kmNow / 100);
+  if (hundreds > (active.stations || 0)) {
+    active.stations = hundreds; saveActive();
+    const el = $('driveCar'); el.classList.remove('station'); void el.offsetWidth; el.classList.add('station');
+    setTimeout(() => el.classList.remove('station'), 6500);
+    toast(`${hundreds * 100} km! Tijd voor een tankstation? ⛽`);
+  }
   const dot = $('gpsDot'), txt = $('gpsTxt');
   if (!lastFix) { if (!dot.classList.contains('bad')) { dot.className = 'dot'; txt.textContent = 'GPS zoeken…'; } return; }
   const age = (Date.now() - lastFix.t) / 1000, a = nf0.format(lastFix.acc);
@@ -440,6 +463,13 @@ function render() {
 }
 
 // ================= knoppen & navigatie =================
+for (const id of ['heroCar', 'driveCar', 'gateCar']) {
+  $(id).addEventListener('click', () => {
+    honk();
+    const el = $(id); el.classList.remove('honk'); void el.offsetWidth; el.classList.add('honk');
+    setTimeout(() => el.classList.remove('honk'), 1000);
+  });
+}
 $('btnStart').onclick = startRide;
 $('btnStop').onclick = stopRide;
 $('btnCancel').onclick = async () => {

@@ -118,7 +118,42 @@
   @keyframes road{from{transform:translateX(0)}to{transform:translateX(-44px)}}
   @keyframes bob{from{transform:translateY(0)}to{transform:translateY(-1.5px)}}
   @keyframes puff{0%{opacity:.9;transform:translateX(0) scale(.6)}100%{opacity:0;transform:translateX(-14px) scale(1.3)}}
-  @media (prefers-reduced-motion: reduce){ .driving .car *{animation:none !important} }
+  /* landschap, toeter, slaap */
+  .car .scenery, .car .zzz, .car .toet{display:none}
+  .driving .car .scenery{display:block}
+  .car .sc{transform:translateX(360px)}
+  .driving .car .sc{animation:pass 7s linear infinite}
+  .driving .car .sc-mill{animation-delay:-2.4s;animation-duration:9s}
+  .driving .car .sc-sign{animation-delay:-5s;animation-duration:11s}
+  .driving .car .sc-bush{animation-delay:-1s;animation-duration:5s}
+  .driving .car .sc-station{display:none}
+  .driving.station .car .sc-station{display:block;animation:pass 6s linear 1 forwards}
+  .driving .car .blades{animation:spin 3s linear infinite}
+  @keyframes pass{from{transform:translateX(360px)}to{transform:translateX(-70px)}}
+  .sleepy .car .zzz{display:block}
+  .sleepy .car .zzz text{animation:zz 2.4s ease-in-out infinite}
+  .sleepy .car .zzz text:nth-child(2){animation-delay:.4s}.sleepy .car .zzz text:nth-child(3){animation-delay:.8s}
+  @keyframes zz{0%,100%{opacity:.2;transform:translateY(2px)}50%{opacity:1;transform:translateY(-3px)}}
+  .hero{cursor:pointer;-webkit-user-select:none;user-select:none}
+  .honk .car .toet{display:block;animation:pop .9s ease-out forwards}
+  .honk .car .body{animation:hop .35s ease-out 2}
+  @keyframes pop{0%{opacity:0;transform:scale(.6);transform-origin:258px 40px}20%{opacity:1;transform:scale(1.08);transform-origin:258px 40px}80%{opacity:1}100%{opacity:0}}
+  @keyframes hop{50%{transform:translateY(-6px)}}
+  /* reacties van de poppetjes */
+  .pop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:35;pointer-events:none}
+  .pop.on{display:flex}
+  .pop .bubble{background:var(--card);border-radius:26px;padding:20px 22px 18px;box-shadow:0 12px 40px rgba(60,40,20,.25);text-align:center;max-width:300px;animation:popin .35s cubic-bezier(.2,1.4,.4,1)}
+  .pop .faces{position:relative;display:inline-block;margin-bottom:6px}
+  .pop .faces .emo{position:absolute;right:-18px;top:-6px;font-size:30px}
+  .pop.wave .emo{animation:wave .6s ease-in-out 3;transform-origin:70% 80%}
+  .pop.shock .faces{animation:shake .4s ease-in-out 2}
+  .pop .title{font-weight:900;font-size:19px;line-height:1.2}
+  .pop .sub{color:var(--muted);font-weight:700;font-size:14px;margin-top:4px}
+  @keyframes popin{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+  @keyframes wave{0%,100%{transform:rotate(0)}50%{transform:rotate(22deg)}}
+  @keyframes shake{25%{transform:translateX(-5px) rotate(-3deg)}75%{transform:translateX(5px) rotate(3deg)}}
+  .fun{font-size:13px;color:var(--muted);font-weight:700;margin-top:10px}
+  @media (prefers-reduced-motion: reduce){ .driving .car *, .pop *{animation:none !important} }
 </style>
 </head>
 <body>
@@ -285,6 +320,7 @@
   </div>
 </div>
 
+<div class="pop" id="pop"><div class="bubble"><div class="faces"><span id="popFaces"></span><span class="emo" id="popEmo"></span></div><div class="title" id="popTitle"></div><div class="sub" id="popSub"></div></div></div>
 <div class="toast" id="toast"></div>
 <script type="module" src="app.js"></script>
 </body>
