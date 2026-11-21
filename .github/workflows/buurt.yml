@@ -1,0 +1,27 @@
+name: Buurt bijwerken
+
+# Haalt de buurtdata (3D BAG + OpenStreetMap) op voor het Polo-diorama en zet public/buurt.json in de repo.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Buurtdata ophalen
+        run: node scripts/build-buurt.mjs
+      - name: Vastleggen
+        run: |
+          ls -la public/buurt.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/buurt.json
+          git diff --cached --quiet && echo "Geen wijzigingen" || (git commit -m "Buurtdata bijgewerkt" && git push)
