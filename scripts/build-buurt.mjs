@@ -123,7 +123,9 @@ async function bag3d(cx, cy) {
       const fc = JSON.parse(text);
       if (fc.features?.length) {
         console.log(`3D BAG: ${fc.features.length} panden via ${url.split('?')[0]} (${url.match(/TYPENAMES=([^&]+)/)[1]})`);
-        console.log('Voorbeeld-attributen:', JSON.stringify(fc.features[0].properties).slice(0, 600));
+        console.log('Attribuutnamen:', Object.keys(fc.features[0].properties).join(', '));
+        const p0 = fc.features[0].properties;
+        console.log('Hoogte-attributen:', JSON.stringify(Object.fromEntries(Object.entries(p0).filter(([k]) => /h_|maaiveld|ground/i.test(k)))));
         return fc.features;
       }
       console.warn('3dbag leeg', url.slice(0, 120));
@@ -132,10 +134,11 @@ async function bag3d(cx, cy) {
   return null;
 }
 
+const GROUND_NAP = -1.5;   // maaiveld in Bergpolder ligt rond NAP −1 à −2 m (terugval)
 function heightOf(props) {
   const p = props || {};
-  const roof = p.b3_h_dak_70p ?? p.h_dak_70p ?? p.b3_h_dak_50p ?? p.h_dak_50p ?? p.b3_h_dak_max ?? p.h_dak_max;
-  const ground = p.b3_h_maaiveld ?? p.h_maaiveld ?? 0;
+  const roof = p.b3_h_70p ?? p.b3_h_dak_70p ?? p.h_dak_70p ?? p.b3_h_50p ?? p.b3_h_dak_50p ?? p.b3_h_max ?? p.h_dak_max;
+  const ground = p.b3_h_maaiveld ?? p.h_maaiveld ?? p.b3_maaiveld ?? GROUND_NAP;
   const h = Number(roof) - Number(ground);
   return Number.isFinite(h) && h > 1 && h < 250 ? h : null;
 }
