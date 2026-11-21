@@ -1,6 +1,7 @@
 import {
   HOUSEHOLDS, trackStep, computeRides, counterBefore, totals, excelText, parseNum, newId,
 } from './core.js';
+import { car, duo, logo } from './art.js';
 
 // ================= opslag op het toestel =================
 const KEY = {
@@ -65,7 +66,8 @@ async function copyText(text, okMsg) {
 function renderPick(el, sel, onPick) {
   el.innerHTML = '';
   for (const h of HOUSEHOLDS) {
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = h;
+    const b = document.createElement('button'); b.type = 'button';
+    b.innerHTML = `${duo(h, 40)}<span>${h}</span>`;
     if (h === sel) b.className = `sel-${h}`;
     b.onclick = () => onPick(h);
     el.appendChild(b);
@@ -366,22 +368,28 @@ function itemHTML(e, kmInfo) {
   if (ride && e.src === 'gps') parts.push('GPS');
   if (!ride && e.lp) parts.push(`${eur.format(e.lp)}/l · ${nf1.format(e.cost / e.lp)} l`);
   return `<div class="item" data-id="${esc(e.id)}">
-    <span class="pill ${e.hh}">${e.hh}</span>
-    <div class="info"><div>${ride ? '' : '⛽ '}${dayLabel(e.date)}</div>${parts.length ? `<div class="muted small">${parts.join(' · ')}</div>` : ''}</div>
+    ${duo(e.hh, 28)}
+    <div class="info"><div>${ride ? '' : '⛽ '}${dayLabel(e.date)} <span class="muted small">· ${e.hh}</span></div>${parts.length ? `<div class="muted small">${parts.join(' · ')}</div>` : ''}</div>
     <span class="val">${ride ? `${k?.warn ? '⚠︎ ' : ''}${k?.km ?? e.km} km` : eur.format(e.cost)}</span></div>`;
 }
 function bindItems(el) { el.querySelectorAll('.item').forEach((r) => { r.onclick = () => editEntry(r.dataset.id); }); }
 function totalsHTML(t) {
   const sum = t.Klein + t.Groot, pK = sum ? (t.Klein / sum) * 100 : 50;
   return `<div class="bar"><i style="width:${pK}%;background:var(--k)"></i><i style="width:${100 - pK}%;background:var(--g)"></i></div>
-    <div class="tot">${HOUSEHOLDS.map((h) => `<div><span class="pill ${h}">${h}</span> <b>${nf0.format(t[h])} km</b>
-      <span class="muted">${sum ? nf0.format((t[h] / sum) * 100) : 0}%</span>
-      ${t.tank[h] ? `<div class="muted small" style="margin-top:4px">getankt ${eur.format(t.tank[h])}</div>` : ''}</div>`).join('')}</div>`;
+    <div class="tot">${HOUSEHOLDS.map((h) => `<div>${duo(h, 30)}<div><b>${nf0.format(t[h])} km</b>
+      <div class="muted small">${h} · ${sum ? nf0.format((t[h] / sum) * 100) : 0}%</div>
+      ${t.tank[h] ? `<div class="muted small">⛽ ${eur.format(t.tank[h])}</div>` : ''}</div></div>`).join('')}</div>`;
 }
 const sortDesc = (list) => [...list].sort((a, b) => (a.date === b.date ? (b.t || 0) - (a.t || 0) : a.date < b.date ? 1 : -1));
 
+const shownCar = {};
+function showCar(el, hh) {
+  if (shownCar[el] === hh) return;
+  shownCar[el] = hh; $(el).innerHTML = car(hh);
+}
 function renderIdle() {
   renderPick($('pickStart'), pickHH, (h) => { pickHH = h; renderIdle(); });
+  showCar('heroCar', pickHH);
   const list = all(), key = today().slice(0, 7), t = totals(list, key), { counter } = computeRides(list);
   $('counterHint').textContent = counter != null ? `Kilometerteller nu ≈ ${nf0.format(counter)}` : '';
   $('monthCard').innerHTML = `<div class="between"><b style="text-transform:capitalize">${monthLabel(key)}</b>
@@ -390,6 +398,7 @@ function renderIdle() {
 function renderActive() {
   if (!active) return;
   const pill = $('actHH'); pill.textContent = active.hh; pill.className = `pill ${active.hh}`;
+  showCar('driveCar', active.hh);
   $('actKm').textContent = nf1.format((active.m / 1000) * (settings.factor || 1));
   const ms = Date.now() - active.start;
   $('actTime').textContent = fmtDur(ms);
@@ -479,6 +488,7 @@ window.addEventListener('online', () => sync());
 setInterval(() => { if (document.visibilityState === 'visible' && !sheet) sync(); }, 30000);
 
 // ================= start =================
+$('gateCar').innerHTML = logo();
 render();
 if (active) { startWatch(); toast('Rit loopt nog — meting gaat verder'); }
 if (code) sync(); else showGate();

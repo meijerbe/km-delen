@@ -3,97 +3,128 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Kilometers delen</title>
-<meta name="theme-color" content="#14532d">
+<title>Disco Polo · kilometers delen</title>
+<meta name="theme-color" content="#FFF8EF">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Km delen">
+<meta name="apple-mobile-web-app-title" content="Disco Polo">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#f4f6f3; --card:#ffffff; --ink:#18211b; --muted:#647067; --line:#e2e7e1;
-    --accent:#1f7a45; --stop:#c2410c; --k:#1f7a45; --g:#2563eb; --radius:18px;
+    --bg:#FFF8EF; --card:#FFFFFF; --ink:#2E2A26; --muted:#8C8278; --line:#F0E7DA; --soft:#FBF3E8;
+    --accent:#2FA37A; --stop:#EE6C4D; --k:#F08A5D; --g:#4C8FD6; --sky:#A8D4F0; --radius:22px;
+    --shadow:0 2px 0 rgba(120,90,50,.06), 0 8px 24px rgba(120,90,50,.07);
   }
   @media (prefers-color-scheme: dark){
-    :root{ --bg:#0f1411; --card:#18201b; --ink:#e8efe9; --muted:#93a097; --line:#26302a;
-      --accent:#34a361; --stop:#ea580c; --k:#34a361; --g:#60a5fa; }
+    :root{ --bg:#1C1916; --card:#26221E; --ink:#F3ECE3; --muted:#A89D91; --line:#38322C; --soft:#2E2924;
+      --accent:#3DBB8D; --stop:#F07D60; --k:#F39A73; --g:#6EA6E6; --shadow:none; }
   }
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-tap-highlight-color:transparent}
-  body{padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 90px)}
+    font-family:Nunito,ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+  body{padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 96px)}
   .wrap{max-width:560px;margin:0 auto}
-  header{display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px}
-  h1{font-size:20px;margin:0}
-  .sync{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 10px}
-  h2{font-size:14px;margin:22px 2px 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+  header{display:flex;align-items:center;justify-content:space-between;margin:4px 2px 14px}
+  h1{font-size:24px;margin:0;font-weight:900;letter-spacing:-.01em;line-height:1}
+  h1 small{display:block;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:0;margin-top:3px}
+  .sync{font-size:12px;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:6px;background:var(--card);border-radius:999px;padding:6px 11px;box-shadow:var(--shadow)}
+  h2{font-size:13px;margin:24px 4px 8px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+  .card{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow)}
   .muted{color:var(--muted)} .small{font-size:13px}
-  button{font:inherit;border:0;border-radius:14px;padding:12px 16px;cursor:pointer;background:var(--line);color:var(--ink)}
-  button.primary{background:var(--accent);color:#fff;font-weight:600}
-  button.danger{background:transparent;color:var(--stop);border:1px solid var(--stop)}
-  button.ghost{background:transparent;border:1px solid var(--line)}
+  button{font:inherit;font-weight:700;border:0;border-radius:16px;padding:12px 16px;cursor:pointer;background:var(--soft);color:var(--ink)}
+  button:active{transform:scale(.98)}
+  button.primary{background:var(--accent);color:#fff;font-weight:800}
+  button.danger{background:transparent;color:var(--stop);border:2px solid var(--stop)}
+  button.ghost{background:transparent;border:2px dashed var(--line);color:var(--muted)}
   .full{width:100%}
   .row{display:flex;gap:10px;align-items:center} .row > *{flex:1}
   .between{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .hero{margin:-4px -4px 4px;position:relative}
+  .hero .car{display:block;width:100%;height:auto}
   .pick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 4px}
-  .pick button{padding:16px 10px;border:2px solid var(--line);background:var(--card);font-weight:600}
-  .pick button.sel-Klein{border-color:var(--k);background:color-mix(in srgb,var(--k) 14%,var(--card))}
-  .pick button.sel-Groot{border-color:var(--g);background:color-mix(in srgb,var(--g) 14%,var(--card))}
-  .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border-radius:12px;padding:3px;margin-top:14px}
-  .seg button{background:transparent;padding:9px;font-size:14px;border-radius:10px;color:var(--muted)}
-  .seg button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
-  .big{width:100%;padding:22px;font-size:22px;border-radius:22px;font-weight:700;color:#fff}
-  .startbtn{background:var(--accent)} .stopbtn{background:var(--stop)}
-  .meter{text-align:center;padding:10px 0 6px}
-  .meter .km{font-size:64px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
-  .meter .unit{font-size:20px;color:var(--muted);margin-left:4px}
+  .pick button{padding:10px 8px 12px;border:2.5px solid var(--line);background:var(--card);font-weight:800;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:16px}
+  .pick button.sel-Klein{border-color:var(--k);background:color-mix(in srgb,var(--k) 12%,var(--card))}
+  .pick button.sel-Groot{border-color:var(--g);background:color-mix(in srgb,var(--g) 12%,var(--card))}
+  .duo{display:inline-flex;align-items:flex-end;flex:none}
+  .duo .avatar{border-radius:50%;background:var(--soft);box-shadow:0 0 0 2.5px var(--card)}
+  .duo .avatar{position:relative}
+  .duo .avatar:first-child{z-index:1}
+  .duo .avatar + .avatar{margin-left:-14%}
+  .sel-Klein .duo .avatar{background:color-mix(in srgb,var(--k) 22%,var(--card))}
+  .sel-Groot .duo .avatar{background:color-mix(in srgb,var(--g) 22%,var(--card))}
+  .big{width:100%;padding:20px;font-size:21px;border-radius:20px;font-weight:900;color:#fff;letter-spacing:.01em}
+  .startbtn{background:var(--accent);box-shadow:0 5px 0 color-mix(in srgb,var(--accent) 70%,#000)}
+  .stopbtn{background:var(--stop);box-shadow:0 5px 0 color-mix(in srgb,var(--stop) 70%,#000)}
+  .meter{text-align:center;padding:2px 0 4px}
+  .meter .km{font-size:64px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+  .meter .unit{font-size:20px;color:var(--muted);margin-left:4px;font-weight:800}
   .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0;text-align:center}
-  .stats div{background:var(--bg);border-radius:12px;padding:8px 4px}
+  .stats div{background:var(--soft);border-radius:14px;padding:8px 4px}
   .stats b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
-  .stats span{font-size:12px;color:var(--muted)}
+  .stats span{font-size:12px;color:var(--muted);font-weight:700}
   .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--muted)}
-  .dot.ok{background:#22c55e}.dot.weak{background:#eab308}.dot.bad{background:#ef4444}
-  .pill{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;color:#fff;min-width:46px;text-align:center}
+  .dot.ok{background:#2FBF71}.dot.weak{background:#F2B33D}.dot.bad{background:#E5533D}
+  .pill{display:inline-block;font-size:12px;font-weight:800;padding:3px 10px;border-radius:999px;color:#fff}
   .pill.Klein{background:var(--k)}.pill.Groot{background:var(--g)}
-  .bar{height:10px;border-radius:999px;overflow:hidden;display:flex;background:var(--line);margin:10px 0}
+  .bar{height:12px;border-radius:999px;overflow:hidden;display:flex;background:var(--soft);margin:12px 0}
   .bar i{display:block;height:100%}
-  .tot{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:14px}
-  .tot b{font-variant-numeric:tabular-nums}
-  .item{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line);cursor:pointer}
+  .tot{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:14px}
+  .tot > div{display:flex;align-items:center;gap:8px;min-width:0}
+  .tot b{font-size:18px;font-variant-numeric:tabular-nums;display:block;line-height:1.1}
+  .tot .small{line-height:1.3}
+  .item{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1.5px solid var(--line);cursor:pointer}
   .item:first-child{border-top:0}
   .item .info{flex:1;min-width:0}
   .item .info div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .item .val{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
-  label{display:block;font-size:13px;color:var(--muted);margin:14px 0 4px}
-  input{width:100%;font:inherit;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
-  .warn{background:color-mix(in srgb,#eab308 18%,var(--card));border-color:color-mix(in srgb,#eab308 50%,var(--line))}
-  .hint{font-size:13px;color:var(--muted);margin:6px 2px 0;min-height:1.2em}
+  .item .val{font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
+  label{display:block;font-size:13px;color:var(--muted);margin:14px 2px 5px;font-weight:700}
+  input{width:100%;font:inherit;font-weight:600;padding:12px 14px;border-radius:14px;border:2px solid var(--line);background:var(--soft);color:var(--ink)}
+  input:focus{outline:none;border-color:var(--sky)}
+  .warn{background:color-mix(in srgb,#F2B33D 16%,var(--card));box-shadow:none}
+  .hint{font-size:13px;color:var(--muted);margin:8px 2px 0;min-height:1.2em;font-weight:600}
   .err{color:var(--stop)}
-  nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);
-    display:grid;grid-template-columns:repeat(4,1fr);padding:6px 6px calc(env(safe-area-inset-bottom) + 6px);z-index:5}
-  nav button{background:transparent;padding:8px 2px;font-size:12px;color:var(--muted);border-radius:10px}
-  nav button.on{color:var(--accent);font-weight:700;background:color-mix(in srgb,var(--accent) 10%,transparent)}
-  nav button .ic{display:block;font-size:20px;line-height:1.15}
+  nav{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom) + 8px);background:var(--card);border-radius:22px;box-shadow:0 6px 28px rgba(80,60,30,.14);
+    display:grid;grid-template-columns:repeat(4,1fr);padding:6px;z-index:5;max-width:540px;margin:0 auto}
+  nav button{background:transparent;padding:7px 2px;font-size:12px;color:var(--muted);border-radius:16px}
+  nav button.on{color:var(--ink);background:var(--soft)}
+  nav button .ic{display:block;font-size:21px;line-height:1.2}
   .view{display:none}.view.on{display:block}
-  .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:10}
+  .sheet-bg{position:fixed;inset:0;background:rgba(40,30,20,.4);display:none;align-items:flex-end;justify-content:center;z-index:10}
   .sheet-bg.on{display:flex}
-  .sheet{background:var(--card);width:100%;max-width:560px;border-radius:22px 22px 0 0;padding:20px 16px calc(env(safe-area-inset-bottom) + 20px);max-height:92vh;overflow:auto}
-  .sheet h3{margin:0 0 4px}
+  .sheet{background:var(--card);width:100%;max-width:560px;border-radius:26px 26px 0 0;padding:22px 16px calc(env(safe-area-inset-bottom) + 20px);max-height:92vh;overflow:auto}
+  .sheet h3{margin:0 0 4px;font-weight:900;font-size:20px}
+  .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--soft);border-radius:14px;padding:4px;margin-top:14px}
+  .seg button{background:transparent;padding:9px;font-size:14px;border-radius:11px;color:var(--muted)}
+  .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
   .gate{position:fixed;inset:0;background:var(--bg);z-index:30;display:none;align-items:center;justify-content:center;padding:24px}
   .gate.on{display:flex}
-  .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 84px);transform:translateX(-50%);background:var(--ink);color:var(--bg);
-    padding:10px 16px;border-radius:12px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:40;max-width:90vw}
+  .gate .car{width:100%;height:auto;display:block;margin:-8px 0 4px}
+  .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 96px);transform:translateX(-50%);background:var(--ink);color:var(--bg);font-weight:700;
+    padding:11px 16px;border-radius:14px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:40;max-width:90vw}
   .toast.on{opacity:1}
+  /* rijdende auto */
+  .car .puffs{opacity:0}
+  .driving .car .wheel{animation:spin .7s linear infinite}
+  .driving .car .dashes{animation:road .55s linear infinite}
+  .driving .car .body{animation:bob .45s ease-in-out infinite alternate}
+  .driving .car .puffs{animation:puff 1.1s ease-out infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes road{from{transform:translateX(0)}to{transform:translateX(-44px)}}
+  @keyframes bob{from{transform:translateY(0)}to{transform:translateY(-1.5px)}}
+  @keyframes puff{0%{opacity:.9;transform:translateX(0) scale(.6)}100%{opacity:0;transform:translateX(-14px) scale(1.3)}}
+  @media (prefers-reduced-motion: reduce){ .driving .car *{animation:none !important} }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>🚗 Kilometers delen</h1>
+    <h1>Disco Polo<small>kilometers delen</small></h1>
     <div class="sync" id="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">…</span></div>
   </header>
 
@@ -101,7 +132,8 @@
   <section id="v-rit" class="view on">
     <div id="idle">
       <div class="card">
-        <div class="muted small">Wie rijdt er?</div>
+        <div class="hero" id="heroCar"></div>
+        <div class="muted small" style="font-weight:700">Wie rijdt er?</div>
         <div class="pick" id="pickStart"></div>
         <button class="big startbtn" id="btnStart" style="margin-top:10px">▶ Start rit</button>
         <p class="hint">Meet met GPS. Houd de app open en het scherm aan tijdens de rit.</p>
@@ -113,6 +145,7 @@
 
     <div id="active" style="display:none">
       <div class="card">
+        <div class="hero driving" id="driveCar"></div>
         <div class="between">
           <span class="pill" id="actHH"></span>
           <span class="small"><span class="dot" id="gpsDot"></span> <span id="gpsTxt">GPS zoeken…</span></span>
@@ -191,7 +224,8 @@
 <!-- Groepscode -->
 <div class="gate" id="gate">
   <form class="card" style="width:100%;max-width:420px" id="gateForm">
-    <h3 style="margin:0 0 6px">🚗 Kilometers delen</h3>
+    <div id="gateCar"></div>
+    <h3 style="margin:0 0 6px;font-weight:900;font-size:22px">Disco Polo</h3>
     <p class="muted small" style="margin:0">Vul de groepscode in die jullie hebben afgesproken. Je hoeft dit maar één keer te doen.</p>
     <label for="gateCode">Groepscode</label>
     <input id="gateCode" autocomplete="off" autocapitalize="off" spellcheck="false">

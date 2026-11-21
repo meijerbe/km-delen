@@ -1,11 +1,11 @@
 {
-  "name": "Kilometers delen",
-  "short_name": "Km delen",
+  "name": "Disco Polo",
+  "short_name": "Disco Polo",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f4f6f3",
-  "theme_color": "#14532d",
+  "background_color": "#FFF8EF",
+  "theme_color": "#FFF8EF",
   "lang": "nl",
   "icons": [
     {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
