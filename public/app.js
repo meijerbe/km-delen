@@ -187,10 +187,16 @@ $('gateForm').onsubmit = async (ev) => {
 // ================= GPS-meting =================
 let watchId = null, wakeLock = null, tick = null, lastFix = null, curSpeed = null;
 
+const GAP_MS = 60000;   // langer dan een minuut geen bruikbare meting = gat in de rit
 function onPos(pos) {
   if (!active) return;
   const c = pos.coords;
   lastFix = { acc: c.accuracy, t: Date.now() };
+  if (c.accuracy <= 40) {
+    const now = Date.now(), prev = active.lastGood || active.start;
+    if (now - prev > GAP_MS) active.gapMs = (active.gapMs || 0) + (now - prev);
+    active.lastGood = now; active.fixes = (active.fixes || 0) + 1;
+  }
   curSpeed = c.speed != null && c.speed >= 0 ? c.speed * 3.6 : null;
   const fix = { lat: c.latitude, lon: c.longitude, t: pos.timestamp || Date.now(), acc: c.accuracy };
   const r = trackStep(active.last, fix);
@@ -230,14 +236,26 @@ function startRide() {
   render(); startWatch();
   toast(startLine(pickHH));
 }
+/** Hoe betrouwbaar was de GPS-meting? Geeft een waarschuwing of '' terug. */
+function gpsWarning(a, now = Date.now()) {
+  const dur = now - a.start, km = a.m / 1000;
+  const tail = now - (a.lastGood || a.start);
+  const gap = (a.gapMs || 0) + (tail > GAP_MS ? tail : 0);
+  if (!a.fixes) return '⚠️ Geen GPS-signaal ontvangen. Vul de km of de kilometerstand in.';
+  if (km < 0.5 && dur > 5 * 60000) return '⚠️ GPS heeft bijna niets gemeten. Klopt dat, of vul je de km zelf in?';
+  if (gap > Math.max(2 * 60000, dur * 0.2)) return `⚠️ ${fmtDur(gap)} zonder GPS-signaal: de km kunnen te laag zijn. Controleer ze even, of gebruik de kilometerstand.`;
+  return '';
+}
+
 function stopRide() {
   if (!active) return;
   stopWatch();
-  const km = active.m / 1000;
+  const km = active.m / 1000, warn = gpsWarning(active);
   openSheet({
     mode: 'new', type: 'rit', id: active.id, hh: active.hh, date: isoDate(active.start), t: active.start,
-    km: Math.round(km), bij: lastBij(active.hh), src: 'gps', dur: Date.now() - active.start, rideMode: 'km',
-    sub: `Gemeten: ${nf1.format(km)} km in ${fmtDur(Date.now() - active.start)}`,
+    km: active.fixes ? Math.round(km) : null, bij: lastBij(active.hh), src: 'gps', dur: Date.now() - active.start, rideMode: 'km',
+    sub: `Gemeten: ${nf1.format(km)} km in ${fmtDur(Date.now() - active.start)}. Je kunt het aantal km hieronder aanpassen.`,
+    warn,
   });
 }
 function lastBij(hh) {
@@ -253,6 +271,7 @@ function openSheet(o) {
   $('shTitle').textContent = o.mode === 'edit' ? (isRide ? 'Rit bewerken' : 'Tankbeurt bewerken')
     : o.mode === 'manual' ? 'Rit achteraf invullen' : 'Rit opslaan';
   $('shSub').textContent = o.sub || '';
+  $('shWarn').textContent = o.warn || ''; $('shWarn').style.display = o.warn ? 'block' : 'none';
   $('shWhoLbl').textContent = isRide ? 'Bestuurder' : 'Getankt door';
   $('shRide').style.display = isRide ? 'block' : 'none';
   $('shTank').style.display = isRide ? 'none' : 'flex';
@@ -268,6 +287,7 @@ function openSheet(o) {
   $('shAll').checked = !o.vast;
   drawSheetPick(); drawMode();
   $('sheetBg').classList.add('on');
+  if (o.mode === 'new' && o.warn) setTimeout(() => { $('shKm').focus(); $('shKm').select(); }, 50);
 }
 function drawSheetPick() { renderPick($('shHH'), sheet.hh, (h) => { sheet.hh = h; drawSheetPick(); }); }
 function sheetCounter() {

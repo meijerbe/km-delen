@@ -207,3 +207,34 @@ test('kilometerstand met niet-ingevulde km ertussen (samen of vol-naar-vol)', as
   await expect(p.locator('#overview .item', { hasText: 'stand 20.150' })).toContainText('50 km');
   await ctx.close();
 });
+
+test('GPS-waarschuwingen bij stoppen: geen signaal en een lang gat', async ({ browser }) => {
+  // Zonder locatietoestemming: geen enkele meting
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  await login(p);
+  await expect(p.locator('#gate')).toBeHidden();
+  await p.click('#btnStart');
+  await p.click('#btnStop');
+  await expect(p.locator('#shWarn')).toContainText('Geen GPS-signaal');
+  await expect(p.locator('#shKm')).toHaveValue('');
+  await p.fill('#shKm', '17');
+  await p.click('#shSave');
+  await expect(p.locator('#toast')).toContainText('17 km opgeslagen');
+
+  // Wel metingen, maar 20 minuten zonder signaal in een rit van 30 minuten
+  await p.click('#btnStart');
+  await p.evaluate(() => {
+    const k = 'kmdelen.v3.active', a = JSON.parse(localStorage.getItem(k));
+    Object.assign(a, { start: Date.now() - 30 * 60000, m: 12000, fixes: 40, lastGood: Date.now() - 5 * 60000, gapMs: 15 * 60000 });
+    localStorage.setItem(k, JSON.stringify(a));
+  });
+  await p.reload();
+  await p.click('#btnStop');
+  await expect(p.locator('#shWarn')).toContainText('zonder GPS-signaal');
+  await expect(p.locator('#shKm')).toHaveValue('12');
+  await p.fill('#shKm', '19');
+  await p.click('#shSave');
+  await expect(p.locator('#toast')).toContainText('19 km opgeslagen');
+  await ctx.close();
+});
