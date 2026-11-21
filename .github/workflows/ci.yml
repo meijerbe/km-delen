@@ -13,6 +13,16 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_POSTGRES_URL: postgres://postgres:test@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -22,7 +32,7 @@ jobs:
       - run: npm ci
       - name: Syntax
         run: npm run check
-      - name: Unit-tests (rekenlogica en API)
+      - name: Unit-tests (rekenlogica, API en Postgres)
         run: npm test
       - name: Browser installeren
         run: npx playwright install --with-deps chromium

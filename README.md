@@ -16,7 +16,8 @@ Web-app om bij een gedeelde auto per rit bij te houden wie (stel **Klein** of **
 ## Live zetten op Vercel (eenmalig)
 
 1. **Vercel → Add New → Project** → importeer `meijerbe/km-delen`. Framework preset: *Other*. Verder niets invullen.
-2. **Storage → Create Database → Neon (Postgres)**, regio *Frankfurt (eu-central-1)*, en koppel die aan dit project. Dit zet `DATABASE_URL`; de tabel wordt bij de eerste aanroep zelf aangemaakt.
+2. **Database: Supabase.** Koppel een Supabase-project aan dit Vercel-project via de Supabase-integratie (Supabase → Project Settings → Integrations → Vercel, of in Vercel bij de integratie). Die zet `POSTGRES_URL` (de pooler). De tabel `kmdelen_entries` wordt bij de eerste aanroep zelf aangemaakt, met Row Level Security aan zodat de Supabase REST-API er niet bij kan.
+   Een andere Postgres (bijv. Neon) kan ook: zet dan `DATABASE_URL`.
 3. **Settings → Environment Variables**: `GROUP_CODE` = een code die jullie vieren afspreken (bijv. een zin van drie woorden).
 4. **Deployments → Redeploy**, zodat de variabelen actief worden.
 5. Open de link op de telefoon in Safari of Chrome, vul de groepscode in en kies *Zet op beginscherm*.
@@ -28,7 +29,7 @@ Daarna gaat elke push naar `main` automatisch live en krijgt elke pull request e
 ```bash
 npm install
 npm run dev          # http://localhost:4173, groepscode "test", opslag in geheugen
-npm test             # unit-tests: rekenlogica en API
+npm test             # unit-tests; met TEST_POSTGRES_URL ook tegen een echte database
 npx playwright install chromium
 npm run test:e2e     # browsertests met nagebootste GPS-rit en twee telefoons
 ```
@@ -41,7 +42,7 @@ npm run test:e2e     # browsertests met nagebootste GPS-rit en twee telefoons
 | `public/app.js` | Interface, GPS-meting, synchronisatie (wachtrij voor offline invoer) |
 | `public/core.js` | Pure rekenlogica: afstand, kilometerstanden, totalen, Excel-export |
 | `api/entries.js` | Vercel Function `GET/POST /api/entries` |
-| `lib/` | Afhandeling, validatie en opslag (Neon of in-memory) |
+| `lib/` | Afhandeling, validatie en opslag (Postgres of in-memory) |
 | `test/`, `e2e/` | Unit- en browsertests |
 
 Beveiliging: de API vraagt de groepscode in header `x-groep`. Iedereen met de code kan lezen en schrijven; deel hem alleen met de vier gebruikers.
