@@ -196,3 +196,29 @@ export function costInsights(entries, costs, now = new Date()) {
     settle, debtor, creditor, amount, facts,
   };
 }
+
+// ---------- Rijksdriehoek (voor de buurt-kaart) ----------
+/** WGS84 → RD (benadering, ± 1 m) */
+export function toRD(lat, lon) {
+  const dp = 0.36 * (lat - 52.15517440), dl = 0.36 * (lon - 5.38720621);
+  const R = [[0, 1, 190094.945], [1, 1, -11832.228], [2, 1, -114.221], [0, 3, -32.391], [1, 0, -0.705], [3, 1, -2.340], [1, 3, -0.608], [0, 2, -0.008], [2, 3, 0.148]];
+  const S = [[1, 0, 309056.544], [0, 2, 3638.893], [2, 0, 73.077], [1, 2, -157.984], [3, 0, 59.788], [0, 1, 0.433], [2, 2, -6.439], [1, 1, -0.032], [0, 4, 0.092], [1, 4, -0.054]];
+  let x = 155000, y = 463000;
+  for (const [p, q, r] of R) x += r * dp ** p * dl ** q;
+  for (const [p, q, s] of S) y += s * dp ** p * dl ** q;
+  return [x, y];
+}
+/** RD → WGS84 (benadering, ± 1 m) */
+export function fromRD(x, y) {
+  const dx = (x - 155000) * 1e-5, dy = (y - 463000) * 1e-5;
+  const K = [[0, 1, 3235.65389], [2, 0, -32.58297], [0, 2, -0.24750], [2, 1, -0.84978], [0, 3, -0.06550], [2, 2, -0.01709], [1, 0, -0.00738], [4, 0, 0.00530], [2, 3, -0.00039], [4, 1, 0.00033], [1, 1, -0.00012]];
+  const L = [[1, 0, 5260.52916], [1, 1, 105.94684], [1, 2, 2.45656], [3, 0, -0.81885], [1, 3, 0.05594], [3, 1, -0.05607], [0, 1, 0.01199], [3, 2, -0.00256], [1, 4, 0.00128], [0, 2, 0.00022], [2, 0, -0.00022], [5, 0, 0.00026]];
+  let lat = 52.15517440, lon = 5.38720621;
+  for (const [p, q, k] of K) lat += (k * dx ** p * dy ** q) / 3600;
+  for (const [p, q, l] of L) lon += (l * dx ** p * dy ** q) / 3600;
+  return [lat, lon];
+}
+
+/** Laatste parkeerplek (type 'park'; de nieuwste telt). */
+export const PARK_ID = 'parkeerplek';
+export const parkingOf = (entries) => entries.find((e) => e.id === PARK_ID && e.type === 'park') || null;

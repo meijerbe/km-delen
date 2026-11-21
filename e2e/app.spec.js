@@ -99,7 +99,7 @@ test('rit met GPS, achteraf met kilometerstand, tanken, export en delen tussen t
   await expect(b.locator('#overview .item')).toHaveCount(3);
   await expect(b.locator('#syncTxt')).toHaveText('Gedeeld');
 
-  await tab(a, 'inst');
+  await a.click('#btnGear');
   await a.click('#btnSyncNow');
   await tab(a, 'overzicht');
   await expect(a.locator('#overview .item')).toHaveCount(3);
@@ -236,5 +236,34 @@ test('GPS-waarschuwingen bij stoppen: geen signaal en een lang gat', async ({ br
   await p.fill('#shKm', '19');
   await p.click('#shSave');
   await expect(p.locator('#toast')).toContainText('19 km opgeslagen');
+  await ctx.close();
+});
+
+test('Polo-diorama: buurt laadt, parkeerplek aanwijzen en wegzetten buiten de buurt', async ({ browser }) => {
+  const ctx = await browser.newContext({ geolocation: { latitude: 52.0907, longitude: 5.1214, accuracy: 10 }, permissions: ['geolocation'] });
+  const p = await ctx.newPage();
+  const errors = [];
+  p.on('pageerror', (e) => errors.push(e.message));
+  await login(p);
+  await expect(p.locator('#gate')).toBeHidden();
+  await tab(p, 'polo');
+  await expect(p.locator('#dioramaMsg')).toBeHidden({ timeout: 30000 });
+  await expect(p.locator('#dioramaAttr')).toContainText('OpenStreetMap');
+
+  // Aanwijzen op de kaart
+  await p.click('#btnPark'); await p.click('#pkHH >> text=Klein'); await p.click('#pkPick');
+  await expect(p.locator('#poloNote')).toContainText('Tik op de plek');
+  await p.waitForTimeout(2500);
+  const box = await p.locator('#diorama canvas').boundingBox();
+  await p.mouse.click(box.x + box.width / 2, box.y + box.height * 0.55);
+  await expect(p.locator('#poloText')).toContainText('Klein parkeerde hier');
+  await expect(p.locator('#pop')).toContainText('Parkeerplek opgeslagen');
+
+  // Huidige locatie (Utrecht) ligt buiten de buurt
+  await p.waitForTimeout(3000);
+  await p.click('#btnPark'); await p.click('#pkHere');
+  await expect(p.locator('#poloNote')).toContainText('buiten de buurt');
+  await expect(p.locator('#poloNote a')).toHaveAttribute('href', /52\.0907/);
+  expect(errors).toEqual([]);
   await ctx.close();
 });

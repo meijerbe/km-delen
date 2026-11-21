@@ -36,6 +36,14 @@ De spreadsheet is van een werkaccount dat geen web-apps mag publiceren, dus het 
 
 Het script voegt in `form_data` een kolom **App-id** toe; daarmee worden wijzigingen en verwijderingen in de app ook in de sheet doorgevoerd. Lukt het schrijven naar de sheet even niet, dan gaat het mee met de volgende wijziging of de health-check.
 
+### Polo-diorama
+
+Het tabblad **📍 Polo** toont de buurt rond Bergselaan × Bergpolderstraat (500 × 500 m) als speelgoedblok met een ondergrond van 10 m (straat, klei, veen, zand), met de geparkeerde Polo erop.
+
+- Gebouwen met echte hoogte uit **3D BAG**, straten/water/groen/bomen uit **OpenStreetMap**. De workflow *Buurt bijwerken* haalt ze op en zet ze in `public/buurt.json` (`npm run buurt` lokaal).
+- Three.js staat gebundeld in `public/vendor/three-bundle.js` (`npm run vendor`).
+- Parkeerplek: automatisch na een GPS-rit, of via **📍 Geparkeerd** (huidige locatie of aanwijzen op de kaart). Wordt gedeeld via de database, niet naar de spreadsheet gestuurd. Staat de Polo buiten de buurt, dan toont de app de afstand en een link naar Kaarten.
+
 ### Kosten
 
 Het tabblad **Kosten** leest *Overige kosten* rechtstreeks uit de (openbaar gedeelde) spreadsheet via Google's gviz-uitvoer (`SPREADSHEET_ID` in Vercel). Het laat zien:

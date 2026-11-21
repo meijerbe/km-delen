@@ -14,7 +14,11 @@ export default defineConfig({
     locale: 'nl-NL',
     timezoneId: 'Europe/Amsterdam',
     // Optioneel: lokaal een bestaande Chromium gebruiken
-    launchOptions: process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {},
+    // SwiftShader zodat WebGL (het diorama) ook headless werkt
+    launchOptions: {
+      args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+      ...(process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {}),
+    },
   },
   webServer: {
     command: 'node scripts/dev-server.js',

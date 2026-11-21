@@ -9,11 +9,12 @@ import {
 } from './vendor/three-bundle.js';
 
 const PAL = {
-  ground: '#EFE7D6', grass: '#BFE3A2', field: '#A8D98A', play: '#F6D9A8', water: '#8CCBEB', waterEdge: '#6FB3DA',
+  ground: '#E3ECCD', grass: '#BFE3A2', field: '#A8D98A', play: '#F6D9A8', water: '#8CCBEB', waterEdge: '#6FB3DA',
   road: '#CDD2D9', foot: '#E4DCCB', bike: '#E9B7A9', rail: '#8B8F96',
   layers: [['#D9CDB6', 0.8, 'straat'], ['#A08A6B', 3.2, 'klei'], ['#6B4F38', 3.0, 'veen'], ['#E2C98E', 3.0, 'zand']],
-  houses: ['#F7E3C8', '#F4CDBB', '#E8D5EE', '#D9E7F5', '#F2E6B0', '#CFE5D3', '#F6D4D9', '#EAE0D3'],
-  roofs: ['#D98A6C', '#B9746A', '#8FA1B8', '#A7B59A', '#C9A27A'],
+  walls: ['#FBEEDC', '#FBEEDC', '#F8E1CF', '#F3D6CC', '#EEE2F2', '#DFEBF5', '#F6EBC4', '#E2EFDD'],
+  roofs: ['#E0876A', '#D0715F', '#C9785A', '#8E9EB6', '#A4B0C4'],
+  window: '#86AFD6', windowNight: '#FFD27A', frame: '#FFFFFF', chimney: '#B8705E',
 };
 
 const mat = (c, extra = {}) => new MeshLambertMaterial({ color: new Color(c), ...extra });
@@ -139,11 +140,11 @@ export async function createDiorama(container, { onHonk } = {}) {
 
   const scene = new Scene();
   scene.fog = new Fog('#F3EBDD', 900, 2200);
-  const camera = new PerspectiveCamera(40, 1, 1, 5000);
+  const camera = new PerspectiveCamera(50, 1, 1, 6000);
 
   // licht
   const hemi = new HemisphereLight('#FFFFFF', '#D9C8A8', 1.25);
-  const amb = new AmbientLight('#FFFFFF', 0.25);
+  const amb = new AmbientLight('#FFF6EA', 0.6);
   const sun = new DirectionalLight('#FFF4E0', 1.6);
   sun.position.set(-260, 420, 200);
   sun.castShadow = true;
@@ -173,21 +174,73 @@ export async function createDiorama(container, { onHonk } = {}) {
   add(ribbons(data.roads.filter((r) => r.k === 'fiets'), 0.15), PAL.bike);
   add(ribbons(data.rails.map((r) => ({ l: r.l, w: 1.6 })), 0.17), PAL.rail);
 
-  // gebouwen: geëxtrudeerd, pastel, samengevoegd per kleur
-  const byColor = new Map();
+  // gebouwen: speelgoedhuisjes — pastel muren, gekleurde daken (vertex colors), raampjes en schoorsteentjes
+  const houseGeos = [], wins = [], chimneys = [];
+  const wallC = new Color(), roofC = new Color();
   for (const b of data.buildings) {
     const key = hash(b.p.flat().slice(0, 6).join(','));
-    const color = PAL.houses[key % PAL.houses.length];
-    const geo = new ExtrudeGeometry(shapeOf(b.p), { depth: b.h, bevelEnabled: true, bevelThickness: 0.35, bevelSize: 0.35, bevelSegments: 1 });
+    wallC.set(PAL.walls[key % PAL.walls.length]);
+    roofC.set(PAL.roofs[(key >>> 5) % PAL.roofs.length]);
+    const geo = new ExtrudeGeometry(shapeOf(b.p), { depth: b.h, bevelEnabled: true, bevelThickness: 0.5, bevelSize: 0.4, bevelSegments: 2 });
     geo.rotateX(-Math.PI / 2);
-    if (!byColor.has(color)) byColor.set(color, []);
-    byColor.get(color).push(geo);
-  }
-  for (const [color, geos] of byColor) {
-    for (let i = 0; i < geos.length; i += 400) {
-      const m = new Mesh(mergeGeometries(geos.slice(i, i + 400)), mat(color));
-      m.castShadow = true; m.receiveShadow = true; scene.add(m);
+    const n = geo.attributes.normal, cols = new Float32Array(n.count * 3);
+    for (let i = 0; i < n.count; i++) {
+      const c = n.getY(i) > 0.6 ? roofC : wallC;
+      cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
     }
+    geo.setAttribute('color', new Float32BufferAttribute(cols, 3));
+    houseGeos.push(geo);
+
+    // raampjes: per gevel om de ± 3,6 m, per verdieping van 3 m
+    if (b.h >= 3) {
+      const pts = b.p, ccw = pts.reduce((a, [x, y], i) => { const [x2, y2] = pts[(i + 1) % pts.length]; return a + (x * y2 - x2 * y); }, 0) > 0;
+      const floors = Math.max(1, Math.floor((b.h - 1.2) / 3));
+      for (let i = 0; i < pts.length; i++) {
+        const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % pts.length];
+        const L = Math.hypot(x1 - x0, y1 - y0);
+        const cols2 = Math.floor(L / 3.6);
+        if (cols2 < 1) continue;
+        // naar buiten gerichte normaal (in kaartcoördinaten)
+        let nx = (y1 - y0) / L, ny = -(x1 - x0) / L;
+        if (!ccw) { nx = -nx; ny = -ny; }
+        for (let c = 0; c < cols2; c++) {
+          const t = (c + 0.5) / cols2, x = x0 + (x1 - x0) * t + nx * 0.45, y = y0 + (y1 - y0) * t + ny * 0.45;
+          for (let f = 0; f < floors; f++) wins.push([x, 1.7 + f * 3, y, nx, ny]);
+        }
+      }
+      if (key % 3 === 0 && b.h > 5) {
+        const [cx, cy] = b.p.reduce(([a, c], [x, y]) => [a + x / b.p.length, c + y / b.p.length], [0, 0]);
+        chimneys.push([cx + ((key >>> 8) % 5) - 2, b.h, cy + ((key >>> 12) % 5) - 2]);
+      }
+    }
+  }
+  for (let i = 0; i < houseGeos.length; i += 300) {
+    const m = new Mesh(mergeGeometries(houseGeos.slice(i, i + 300)), new MeshLambertMaterial({ vertexColors: true }));
+    m.castShadow = true; m.receiveShadow = true; scene.add(m);
+  }
+  const winMat = new MeshBasicMaterial({ color: '#FFFFFF' });
+  const frameMat = mat(PAL.frame);
+  let winMesh = null;
+  if (wins.length) {
+    const frames = new InstancedMesh(new PlaneGeometry(1.55, 1.95), frameMat, wins.length);
+    winMesh = new InstancedMesh(new PlaneGeometry(1.15, 1.55), winMat, wins.length);
+    const o = new Object3D();
+    wins.forEach(([x, yy, y, nx, ny], i) => {
+      o.position.set(x, yy, -y); o.lookAt(x + nx, yy, -(y + ny)); o.updateMatrix(); frames.setMatrixAt(i, o.matrix);
+      o.position.set(x + nx * 0.03, yy, -(y + ny * 0.03)); o.updateMatrix(); winMesh.setMatrixAt(i, o.matrix);
+    });
+    // 's avonds is niet overal licht aan
+    const lit = new Color(PAL.windowNight), dark = new Color('#3F4E6B');
+    winMesh.userData.colors = wins.map((_, i) => (hash(`w${i}`) % 3 ? lit : dark));
+    const day = new Color(PAL.window);
+    wins.forEach((_, i) => winMesh.setColorAt(i, day));
+    scene.add(frames, winMesh);
+  }
+  if (chimneys.length) {
+    const ch = new InstancedMesh(new BoxGeometry(1.4, 2.6, 1.4), mat(PAL.chimney), chimneys.length);
+    const o = new Object3D();
+    chimneys.forEach(([x, h, y], i) => { o.position.set(x, h + 1.6, -y); o.updateMatrix(); ch.setMatrixAt(i, o.matrix); });
+    ch.castShadow = true; scene.add(ch);
   }
 
   trees([...data.trees, ...scatterTrees(data.green, data.trees.length)], scene);
@@ -195,11 +248,26 @@ export async function createDiorama(container, { onHonk } = {}) {
   // Polo + pin
   const car = polo(); scene.add(car);
   const marker = pin(); scene.add(marker);
-  const setCar = (x, y, heading = 0) => {
-    car.position.set(x, 0.12, -y); car.rotation.y = heading;
+  car.visible = marker.visible = false;
+  /** Richting van de dichtstbijzijnde weg, zodat de Polo netjes langs de stoep staat */
+  const roadHeading = (x, y) => {
+    let best = Infinity, ang = 0;
+    for (const r of data.roads) {
+      if (r.k !== 'weg') continue;
+      for (let i = 0; i < r.l.length - 1; i++) {
+        const [x0, y0] = r.l[i], [x1, y1] = r.l[i + 1], dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy || 1;
+        const t = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / L2));
+        const d = Math.hypot(x - (x0 + t * dx), y - (y0 + t * dy));
+        if (d < best) { best = d; ang = Math.atan2(dy, dx); }
+      }
+    }
+    return best < 40 ? ang : 0;
+  };
+  const setCar = (x, y) => {
+    car.visible = marker.visible = true;
+    car.position.set(x, 0.12, -y); car.rotation.y = roadHeading(x, y);
     marker.position.set(x, 8, -y);
   };
-  setCar(0, 0);
 
   // camera + besturing
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -210,29 +278,48 @@ export async function createDiorama(container, { onHonk } = {}) {
   controls.enablePan = true; controls.screenSpacePanning = false;
 
   // vlucht naar de auto
-  let fly = { t: 0, from: new Vector3(520, 760, 820), to: new Vector3(120, 150, 190) };
-  camera.position.copy(fly.from);
+  /** Camerapositie waarbij het hele blok (met de rand) in beeld past */
+  const overview = () => {
+    const aspect = Math.max(0.3, camera.aspect || 0.5);
+    const hfov = 2 * Math.atan(Math.tan(MathUtils.degToRad(camera.fov / 2)) * aspect);
+    const dist = Math.max((H * 1.3) / Math.tan(hfov / 2), (H * 1.2) / Math.tan(MathUtils.degToRad(camera.fov / 2)));
+    return new Vector3(Math.sin(0.5) * dist * 0.72, dist * 0.68, Math.cos(0.5) * dist * 0.72);
+  };
+  let fly = null;
+  const flyTo = (target, offset, sec = 1.8) => {
+    fly = { t: 0, sec, from: camera.position.clone(), fromT: controls.target.clone(), toT: target.clone(), to: target.clone().add(offset) };
+  };
 
-  // tik op de Polo = toeter
+  // tik op de Polo = toeter; in aanwijsmodus: tik op de grond = parkeerplek
   const ray = new Raycaster(), ndc = new Vector2();
-  let hop = 0, down = null;
+  let hop = 0, down = null, pickCb = null;
   renderer.domElement.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
   renderer.domElement.addEventListener('pointerup', (e) => {
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    if (ray.intersectObjects([car, marker], true).length) { hop = 1; onHonk?.(); }
+    if (pickCb) {
+      const hit = ray.intersectObject(top)[0];
+      if (hit && Math.abs(hit.point.x) <= H && Math.abs(hit.point.z) <= H) { const cb = pickCb; pickCb = null; cb(hit.point.x, -hit.point.z); }
+      return;
+    }
+    if (car.visible && ray.intersectObjects([car, marker], true).length) { hop = 1; onHonk?.(); }
   });
 
   // dag/nacht naar de echte tijd
   function daylight() {
     const h = new Date().getHours() + new Date().getMinutes() / 60;
     const night = h < 6.5 || h > 19.5 ? 1 : h < 8 ? (8 - h) / 1.5 : h > 18 ? (h - 18) / 1.5 : 0;
-    sun.intensity = 1.6 * (1 - night * 0.75);
-    hemi.intensity = 1.25 * (1 - night * 0.55);
-    hemi.color.set(night > 0.5 ? '#9FB4E8' : '#FFFFFF');
+    sun.intensity = 1.6 * (1 - night * 0.6);
+    hemi.intensity = 1.25 * (1 - night * 0.3);
+    hemi.color.set(night > 0.5 ? '#C3CFF2' : '#FFFFFF');
     car.userData.lights.forEach((m) => { m.emissiveIntensity = night > 0.5 ? 1.2 : 0; });
+    if (winMesh) {
+      const day = new Color(PAL.window);
+      winMesh.userData.colors.forEach((c, i) => winMesh.setColorAt(i, night > 0.5 ? c : day));
+      winMesh.instanceColor.needsUpdate = true;
+    }
     container.classList.toggle('night', night > 0.5);
   }
   daylight();
@@ -250,18 +337,22 @@ export async function createDiorama(container, { onHonk } = {}) {
 
   function resize() {
     const w = container.clientWidth, h = container.clientHeight;
+    if (!w || !h) return;
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
   }
   new ResizeObserver(resize).observe(container); resize();
+  camera.position.copy(overview().multiplyScalar(1.6));
+  flyTo(new Vector3(0, 0, 0), overview(), 2.2);
 
   let running = true, last = performance.now(), clock = 0;
   function frame(now) {
     if (!running) return;
     const dt = Math.min(0.05, (now - last) / 1000); last = now; clock += dt;
     if (fly) {
-      fly.t = Math.min(1, fly.t + dt / 2.2);
+      fly.t = Math.min(1, fly.t + dt / fly.sec);
       const k = 1 - (1 - fly.t) ** 3;
-      camera.position.lerpVectors(fly.from, fly.to.clone().add(controls.target), k);
+      camera.position.lerpVectors(fly.from, fly.to, k);
+      controls.target.lerpVectors(fly.fromT, fly.toT, k);
       if (fly.t >= 1) fly = null;
     }
     marker.position.y = 8 + Math.sin(clock * 2.4) * 1.2;
@@ -275,10 +366,16 @@ export async function createDiorama(container, { onHonk } = {}) {
   requestAnimationFrame(frame);
 
   return {
-    setCar(x, y, heading) {
-      setCar(x, y, heading); controls.target.set(x, 0, -y);
-      fly = { t: 0, from: camera.position.clone(), to: new Vector3(120, 150, 190) };
+    /** Polo neerzetten op kaartcoördinaten (m t.o.v. het midden); null = verbergen */
+    setCar(pos) {
+      if (!pos) { car.visible = marker.visible = false; if (label) label.style.display = 'none'; return; }
+      setCar(pos[0], pos[1]); if (label) label.style.display = '';
     },
+    flyToCar() { if (car.visible) flyTo(car.position.clone().setY(0), new Vector3(34, 40, 52)); },
+    flyOverview() { flyTo(new Vector3(0, 0, 0), overview()); },
+    /** Aanwijsmodus: volgende tik op de grond geeft [x, y] terug */
+    pick() { return new Promise((resolve) => { pickCb = (x, y) => resolve([x, y]); }); },
+    cancelPick() { pickCb = null; },
     pause() { running = false; },
     resume() { if (!running) { running = true; last = performance.now(); daylight(); requestAnimationFrame(frame); } },
     data,

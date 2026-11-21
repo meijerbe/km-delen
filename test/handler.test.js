@@ -71,3 +71,15 @@ test('health: 200 met database, 503 zonder, zonder groepscode', async () => {
   assert.equal(res.status, 503);
   assert.deepEqual(await res.json(), { ok: false, error: 'Database niet bereikbaar' });
 });
+
+test('parkeerplek: geldig, gedeeld, maar nooit naar de spreadsheet', async () => {
+  const store = memoryStore();
+  const ctx = { code: 'geheim', store: () => store };
+  const park = { id: 'parkeerplek', type: 'park', date: '2026-11-21', t: 5, hh: 'Groot', lat: 51.9341312, lon: 4.4664381, src: 'kaart', upd: 50 };
+  const r = await (await handle(req('POST', { puts: [park] }), ctx)).json();
+  assert.equal(r.applied, 1);
+  const list = (await (await handle(req('GET'), ctx)).json()).entries;
+  assert.deepEqual(list[0], { ...park, lat: 51.934131, lon: 4.466438 });
+  assert.deepEqual(await store.unsynced(10), []);
+  assert.equal(cleanEntry({ ...park, lat: 200 }), null);
+});

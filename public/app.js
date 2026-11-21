@@ -1,6 +1,6 @@
 import {
   HOUSEHOLDS, trackStep, computeRides, counterBefore, totals, excelText, parseNum, newId,
-  costInsights, categoryOf,
+  costInsights, categoryOf, toRD, fromRD, PARK_ID, parkingOf,
 } from './core.js';
 import { car, duo, logo } from './art.js';
 import { startLine, stopLine, tankLine, compareLine, honk } from './fun.js';
@@ -361,9 +361,12 @@ $('shSave').onclick = () => {
     if (lp > 0) e.lp = lp; else delete e.lp;
   }
   const wasNew = sheet.mode === 'new', wasManual = sheet.mode === 'manual';
+  const lastFixPos = wasNew && active?.last ? active.last : null;
   closeSheet();
   if (wasNew) { active = null; saveActive(); }
   putEntry(e);
+  // Na een GPS-rit: laatste goede positie = parkeerplek
+  if (lastFixPos) putEntry({ id: PARK_ID, type: 'park', date: today(), t: Date.now(), hh: e.hh, lat: lastFixPos.lat, lon: lastFixPos.lon, src: 'gps' });
   if (wasNew) { const l = stopLine(e.km, e.hh); pop(e.hh, '👋', l.title, l.sub); }
   toast(wasNew ? `${e.km} km opgeslagen voor ${e.hh}` : wasManual ? `Bijgeschreven: ${e.km} km voor ${e.hh} ✍️` : 'Opgeslagen');
 };
@@ -491,6 +494,7 @@ function render() {
   $('active').style.display = active ? 'block' : 'none';
   if (active) renderActive(); else renderIdle();
   renderTank(); renderOverview(); renderCosts(); setSync(syncState, syncError);
+  if (diorama && $('v-polo').classList.contains('on')) showParking();
 }
 
 // ================= kosten =================
@@ -644,15 +648,116 @@ $('btnSheetImport').onclick = async () => {
     toast(err instanceof TypeError ? 'Geen verbinding' : err.message);
   } finally { b.disabled = false; b.textContent = 'Formulier-invoer ophalen'; }
 };
-document.querySelectorAll('nav button').forEach((b) => {
-  b.onclick = () => {
-    document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
-    document.querySelectorAll('.view').forEach((v) => v.classList.toggle('on', v.id === `v-${b.dataset.v}`));
-    if (b.dataset.v === 'kosten') loadCosts();
-    render(); window.scrollTo(0, 0);
-  };
-});
+// ================= Polo-diorama & parkeerplek =================
+let diorama = null, dioramaLoading = null;
+const ago = (ms) => {
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 2) return 'zojuist';
+  if (m < 60) return `${m} min geleden`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} uur geleden`;
+  const d = Math.round(h / 24);
+  return d === 1 ? 'gisteren' : `${d} dagen geleden`;
+};
+const isApple = /iPhone|iPad|Macintosh/.test(navigator.userAgent);
+const mapsLink = (lat, lon) => (isApple
+  ? `https://maps.apple.com/?daddr=${lat},${lon}&dirflg=w`
+  : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=walking`);
 
+/** Polo in het diorama zetten (of melden dat hij buiten de buurt staat) */
+function showParking() {
+  if (!diorama || $('diorama').classList.contains('picking')) return;
+  const p = parkingOf(all()), note = $('poloNote');
+  note.classList.remove('on');
+  if (!p) {
+    diorama.setCar(null);
+    note.innerHTML = 'Nog geen parkeerplek bekend. Tik op <b>📍 Geparkeerd</b>.'; note.classList.add('on');
+    return;
+  }
+  const [x, y] = toRD(p.lat, p.lon), [cx, cy] = diorama.data.rd;
+  const lx = x - cx, ly = y - cy, H = diorama.data.half;
+  $('poloFaces').innerHTML = duo(p.hh, 30);
+  $('poloText').innerHTML = `${p.hh} parkeerde hier<small>${ago(p.t)} · <a href="${mapsLink(p.lat, p.lon)}" target="_blank" rel="noopener" style="pointer-events:auto;color:var(--accent)">route</a></small>`;
+  if (Math.abs(lx) <= H && Math.abs(ly) <= H) {
+    diorama.setCar([lx, ly]);
+  } else {
+    diorama.setCar(null);
+    const km = Math.hypot(lx, ly) / 1000;
+    const dir = ['oost', 'noordoost', 'noord', 'noordwest', 'west', 'zuidwest', 'zuid', 'zuidoost'][Math.round(((Math.atan2(ly, lx) * 180) / Math.PI + 360) % 360 / 45) % 8];
+    note.innerHTML = `${duo(p.hh, 22)} ${p.hh} parkeerde ${km < 10 ? km.toFixed(1).replace('.', ',') : Math.round(km)} km ${dir}waarts, buiten de buurt · ${ago(p.t)}<br><a href="${mapsLink(p.lat, p.lon)}" target="_blank" rel="noopener">Open in Kaarten →</a>`;
+    note.classList.add('on');
+  }
+}
+
+async function openDiorama() {
+  if (diorama) { diorama.resume(); showParking(); return; }
+  if (dioramaLoading) return;
+  dioramaLoading = import('./buurt.js')
+    .then((m) => m.createDiorama($('diorama'), { onHonk: () => honk() }))
+    .then((d) => {
+      diorama = d; $('dioramaMsg').style.display = 'none';
+      $('dioramaAttr').textContent = d.data.attribution;
+      showParking();
+      if ($('v-polo').classList.contains('on')) d.resume(); else d.pause();
+    })
+    .catch((err) => { console.error(err); $('dioramaMsg').textContent = 'De buurt kon niet laden 😕'; dioramaLoading = null; });
+}
+
+function saveParking(lat, lon, hh, src) {
+  putEntry({ id: PARK_ID, type: 'park', date: today(), t: Date.now(), hh, lat, lon, src });
+  showParking();
+}
+
+let parkHH = settings.lastHH;
+$('btnPark').onclick = () => {
+  const draw = () => renderPick($('pkHH'), parkHH, (h) => { parkHH = h; draw(); }); draw();
+  $('parkBg').classList.add('on');
+};
+$('pkCancel').onclick = () => $('parkBg').classList.remove('on');
+$('pkHere').onclick = () => {
+  if (!('geolocation' in navigator)) return toast('Deze browser ondersteunt geen GPS');
+  const b = $('pkHere'); b.disabled = true; b.textContent = 'Locatie zoeken…';
+  navigator.geolocation.getCurrentPosition((pos) => {
+    b.disabled = false; b.textContent = '📍 Hier, op mijn huidige plek';
+    $('parkBg').classList.remove('on');
+    saveParking(pos.coords.latitude, pos.coords.longitude, parkHH, 'hier');
+    pop(parkHH, '🅿️', 'Parkeerplek opgeslagen', pos.coords.accuracy > 50 ? `Let op: ± ${Math.round(pos.coords.accuracy)} m nauwkeurig` : 'Iedereen ziet nu waar de Polo staat');
+    diorama?.flyToCar();
+  }, (err) => {
+    b.disabled = false; b.textContent = '📍 Hier, op mijn huidige plek';
+    toast(err.code === 1 ? 'Geen toestemming voor locatie' : 'Locatie niet gevonden, wijs hem aan op de kaart');
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+};
+$('pkPick').onclick = async () => {
+  $('parkBg').classList.remove('on');
+  if (!diorama) return toast('De kaart is nog niet geladen');
+  const note = $('poloNote');
+  note.innerHTML = '👆 Tik op de plek waar de Polo staat · <a href="#" id="pkStop">annuleren</a>'; note.classList.add('on');
+  $('diorama').classList.add('picking');
+  $('pkStop').onclick = (e) => { e.preventDefault(); diorama.cancelPick(); $('diorama').classList.remove('picking'); showParking(); };
+  diorama.flyOverview();
+  const [x, y] = await diorama.pick();
+  $('diorama').classList.remove('picking');
+  const [lat, lon] = fromRD(diorama.data.rd[0] + x, diorama.data.rd[1] + y);
+  saveParking(lat, lon, parkHH, 'kaart');
+  pop(parkHH, '🅿️', 'Parkeerplek opgeslagen', 'Iedereen ziet nu waar de Polo staat');
+  diorama.flyToCar();
+};
+$('btnToPolo').onclick = () => (parkingOf(all()) ? diorama?.flyToCar() : toast('Nog geen parkeerplek bekend'));
+$('btnOverview').onclick = () => diorama?.flyOverview();
+
+function showView(v) {
+  document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x.dataset.v === v));
+  document.querySelectorAll('.view').forEach((el) => el.classList.toggle('on', el.id === `v-${v}`));
+  if (v === 'polo') openDiorama(); else diorama?.pause();
+  if (v === 'kosten') loadCosts();
+  render(); window.scrollTo(0, 0);
+}
+$('btnGear').onclick = () => showView('inst');
+
+document.querySelectorAll('nav button').forEach((b) => {
+  b.onclick = () => showView(b.dataset.v);
+});
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   if (active) startWatch();

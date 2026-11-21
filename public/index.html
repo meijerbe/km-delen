@@ -153,6 +153,26 @@
   @keyframes wave{0%,100%{transform:rotate(0)}50%{transform:rotate(22deg)}}
   @keyframes shake{25%{transform:translateX(-5px) rotate(-3deg)}75%{transform:translateX(5px) rotate(3deg)}}
   .fun{font-size:13px;color:var(--muted);font-weight:700;margin-top:10px}
+  .gear{background:var(--card);box-shadow:var(--shadow);border-radius:999px;padding:6px 9px;font-size:15px;line-height:1}
+  /* diorama */
+  .diorama{position:relative;height:calc(100vh - 190px - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:380px;margin:0 -16px;
+    border-radius:0;overflow:hidden;background:linear-gradient(180deg,#CFE8F7 0%,#F3EBDD 75%);touch-action:none}
+  .diorama.night{background:linear-gradient(180deg,#1F2A4D 0%,#3A3F5C 70%)}
+  .diorama canvas{display:block;width:100%;height:100%}
+  .polo-label{position:absolute;left:0;top:0;pointer-events:none;background:var(--card);color:var(--ink);border-radius:16px;padding:6px 12px 6px 6px;
+    display:flex;align-items:center;gap:8px;font-weight:800;font-size:13px;box-shadow:0 6px 18px rgba(60,40,20,.2);white-space:nowrap;transition:opacity .2s;opacity:0}
+  .polo-label small{display:block;color:var(--muted);font-weight:700;font-size:11px}
+  .diorama-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--muted);pointer-events:none}
+  .diorama-foot{position:absolute;left:12px;right:12px;bottom:10px;display:flex;justify-content:space-between;gap:8px;font-size:10.5px;font-weight:700;color:rgba(60,50,40,.55);pointer-events:none}
+  .night .diorama-foot{color:rgba(255,255,255,.55)}
+  .diorama-bar{position:absolute;left:12px;right:12px;top:12px;display:flex;gap:8px;justify-content:center;z-index:2}
+  .diorama-bar button{background:var(--card);box-shadow:0 4px 14px rgba(60,40,20,.15);padding:9px 12px;font-size:13px;border-radius:14px}
+  .diorama-bar button.primary{background:var(--accent);color:#fff}
+  .diorama-note{position:absolute;left:50%;top:62px;transform:translateX(-50%);background:var(--card);border-radius:14px;padding:8px 12px;font-size:13px;font-weight:700;
+    box-shadow:0 4px 14px rgba(60,40,20,.15);display:none;text-align:center;max-width:90%;z-index:2}
+  .diorama-note.on{display:block}
+  .diorama-note a{color:var(--accent);font-weight:800}
+  .diorama.picking canvas{cursor:crosshair}
   label.check{display:flex;align-items:center;gap:10px;color:var(--ink);font-size:14px;margin-top:12px;cursor:pointer}
   label.check input{width:20px;height:20px;accent-color:var(--accent);flex:none}
   /* kosten */
@@ -185,7 +205,10 @@
 <div class="wrap">
   <header>
     <h1>Disco Polo<small>kilometers delen</small></h1>
-    <div class="sync" id="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">…</span></div>
+    <div class="row" style="flex:none;gap:8px">
+      <div class="sync" id="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">…</span></div>
+      <button class="gear" id="btnGear" aria-label="Instellingen">⚙️</button>
+    </div>
   </header>
 
   <!-- ===== RIT ===== -->
@@ -244,6 +267,21 @@
     <div class="card" id="tankList"></div>
   </section>
 
+  <!-- ===== POLO (diorama) ===== -->
+  <section id="v-polo" class="view">
+    <div class="diorama" id="diorama">
+      <div class="polo-label" id="poloLabel"><span id="poloFaces"></span><span id="poloText">Hier staat de Polo</span></div>
+      <div class="diorama-bar">
+        <button id="btnToPolo">🔍 Polo</button>
+        <button id="btnOverview">🗺️ Buurt</button>
+        <button id="btnPark" class="primary">📍 Geparkeerd</button>
+      </div>
+      <div class="diorama-note" id="poloNote"></div>
+      <div class="diorama-msg" id="dioramaMsg">De buurt wordt gebouwd… 🏗️</div>
+      <div class="diorama-foot"><span>Sleep om te draaien · knijp om te zoomen · tik op de Polo</span><span id="dioramaAttr"></span></div>
+    </div>
+  </section>
+
   <!-- ===== KOSTEN ===== -->
   <section id="v-kosten" class="view">
     <div id="costsView"><div class="card muted">Kosten laden…</div></div>
@@ -275,9 +313,9 @@
 <nav>
   <button data-v="rit" class="on"><span class="ic">🚗</span>Rit</button>
   <button data-v="tank"><span class="ic">⛽</span>Tanken</button>
+  <button data-v="polo"><span class="ic">📍</span>Polo</button>
   <button data-v="kosten"><span class="ic">💶</span>Kosten</button>
   <button data-v="overzicht"><span class="ic">📋</span>Overzicht</button>
-  <button data-v="inst"><span class="ic">⚙️</span>Instellingen</button>
 </nav>
 
 <!-- Groepscode -->
@@ -356,6 +394,18 @@
       <button class="primary" id="ctSave">Opslaan</button>
     </div>
     <button class="danger full" style="margin-top:10px;display:none" id="ctDelete">Verwijderen</button>
+  </div>
+</div>
+
+<!-- Sheet: parkeerplek -->
+<div class="sheet-bg" id="parkBg">
+  <div class="sheet">
+    <h3>Waar staat de Polo?</h3>
+    <div class="muted small">Wie heeft geparkeerd?</div>
+    <div class="pick" id="pkHH"></div>
+    <button class="primary full" style="margin-top:14px" id="pkHere">📍 Hier, op mijn huidige plek</button>
+    <button class="full" style="margin-top:8px" id="pkPick">👆 Aanwijzen op de kaart</button>
+    <button class="ghost full" style="margin-top:8px" id="pkCancel">Annuleren</button>
   </div>
 </div>
 
