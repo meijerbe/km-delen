@@ -27,3 +27,8 @@ test('Postgres-opslag via de API', { skip: !url && 'TEST_POSTGRES_URL niet gezet
     await store.end();
   }
 });
+
+test('Postgres ping', { skip: !url && 'TEST_POSTGRES_URL niet gezet' }, async () => {
+  const store = pgStore(url);
+  try { await store.init(); await store.ping(); } finally { await store.end(); }
+});

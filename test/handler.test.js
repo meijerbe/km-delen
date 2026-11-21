@@ -63,3 +63,11 @@ test('cleanEntry', () => {
     { id: 't', type: 'tank', date: '2026-11-21', hh: 'Groot', t: 1, upd: 1, cost: 78.46, lp: 2.25 });
   assert.equal(cleanEntry({ id: 't', type: 'tank', date: '2026-11-21', t: 1, hh: 'Groot', cost: 0, upd: 1 }), null);
 });
+
+test('health: 200 met database, 503 zonder, zonder groepscode', async () => {
+  const { health } = await import('../lib/handler.js');
+  assert.equal((await health({ store: () => memoryStore() })).status, 200);
+  const res = await health({ store: () => { throw new Error('geen url'); } });
+  assert.equal(res.status, 503);
+  assert.deepEqual(await res.json(), { ok: false, error: 'Database niet bereikbaar' });
+});

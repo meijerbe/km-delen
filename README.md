@@ -22,6 +22,8 @@ Web-app om bij een gedeelde auto per rit bij te houden wie (stel **Klein** of **
 4. **Deployments → Redeploy**, zodat de variabelen actief worden.
 5. Open de link op de telefoon in Safari of Chrome, vul de groepscode in en kies *Zet op beginscherm*.
 
+De workflow *Database wakker houden* roept elke drie dagen `/api/health` aan, zodat Supabase het gratis project niet pauzeert.
+
 Daarna gaat elke push naar `main` automatisch live en krijgt elke pull request een eigen preview-link. GitHub Actions draait bij elke push de tests.
 
 ## Ontwikkelen
@@ -41,7 +43,7 @@ npm run test:e2e     # browsertests met nagebootste GPS-rit en twee telefoons
 | `public/index.html` | Schermen en opmaak |
 | `public/app.js` | Interface, GPS-meting, synchronisatie (wachtrij voor offline invoer) |
 | `public/core.js` | Pure rekenlogica: afstand, kilometerstanden, totalen, Excel-export |
-| `api/entries.js` | Vercel Function `GET/POST /api/entries` |
+| `api/entries.js`, `api/health.js` | Vercel Functions: gegevens en gezondheidscheck |
 | `lib/` | Afhandeling, validatie en opslag (Postgres of in-memory) |
 | `test/`, `e2e/` | Unit- en browsertests |
 
