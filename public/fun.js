@@ -67,3 +67,17 @@ export function honk() {
     }
   } catch { /* geen geluid, dan alleen het wolkje */ }
 }
+
+/** IJscowagen-deuntje voor het broodkarretje (alleen na een tik). */
+export function jingle() {
+  try {
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    const notes = [659, 784, 880, 784, 659, 523, 587, 659];
+    notes.forEach((f, i) => {
+      const t = audio.currentTime + i * 0.16, o = audio.createOscillator(), g = audio.createGain();
+      o.type = 'triangle'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + 0.16);
+    });
+  } catch { /* geen geluid */ }
+}

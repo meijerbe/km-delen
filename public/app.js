@@ -3,7 +3,7 @@ import {
   costInsights, categoryOf, toRD, fromRD, PARK_ID, parkingOf,
 } from './core.js';
 import { car, duo, logo } from './art.js';
-import { startLine, stopLine, tankLine, compareLine, honk } from './fun.js';
+import { startLine, stopLine, tankLine, compareLine, honk, jingle } from './fun.js';
 
 // ================= opslag op het toestel =================
 const KEY = {
@@ -672,6 +672,7 @@ function showParking() {
   if (!p) {
     diorama.setCar(null);
     note.innerHTML = 'Nog geen parkeerplek bekend. Tik op <b>📍 Geparkeerd</b>.'; note.classList.add('on');
+    clearTimeout(showParking.t); showParking.t = setTimeout(() => { if (!$('diorama').classList.contains('picking')) note.classList.remove('on'); }, 4000);
     return;
   }
   const [x, y] = toRD(p.lat, p.lon), [cx, cy] = diorama.data.rd;
@@ -693,9 +694,14 @@ async function openDiorama() {
   if (diorama) { diorama.resume(); showParking(); return; }
   if (dioramaLoading) return;
   dioramaLoading = import('./buurt.js')
-    .then((m) => m.createDiorama($('diorama'), { onHonk: () => honk() }))
+    .then((m) => m.createDiorama($('diorama'), {
+      onHonk: () => honk(),
+      onBread: () => { jingle(); toast(['🥖 Vers brood! Wie wil er een croissantje?', '🎶 Tingelingeling, de broodkar is er!', '🥐 Bakker Ids komt eraan!'][Math.floor(Math.random() * 3)]); },
+    }))
     .then((d) => {
-      diorama = d; $('dioramaMsg').style.display = 'none';
+      diorama = d; window.__diorama = d; $('dioramaMsg').style.display = 'none';
+      fetch('/api/places', { headers: { 'x-groep': code } }).then((r) => (r.ok ? r.json() : { places: [] }))
+        .then((r) => d.setPlaces(r.places || [])).catch(() => {});
       $('dioramaAttr').textContent = d.data.attribution;
       showParking();
       if ($('v-polo').classList.contains('on')) d.resume(); else d.pause();

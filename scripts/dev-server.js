@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { handle, handleImport, handleCosts, health } from '../lib/handler.js';
+import { handle, handleImport, handleCosts, handlePlaces, health } from '../lib/handler.js';
 import { readFileSync } from 'node:fs';
 import { sheetConfig } from '../lib/sheet.js';
 import { memoryStore } from '../lib/store.js';
@@ -15,6 +15,11 @@ const code = process.env.GROUP_CODE || 'test';
 const store = memoryStore();
 const sheet = sheetConfig();   // optioneel: SHEET_WEBHOOK_URL en SHEET_TOKEN
 // Lokaal: kosten uit een JSON-bestand (COSTS_FIXTURE) in plaats van Google Sheets
+// Lokaal: plekken met vaste RD-coördinaten (PLACES_RD='{"adres":[x,y]}') in plaats van PDOK
+const placesFetch = process.env.PLACES_RD ? async (url) => {
+  const q = decodeURIComponent(new URL(url).searchParams.get('q')), rd = JSON.parse(process.env.PLACES_RD)[q];
+  return new Response(JSON.stringify({ response: { docs: rd ? [{ centroide_rd: `POINT(${rd[0]} ${rd[1]})` }] : [] } }));
+} : undefined;
 const sheetCosts = process.env.COSTS_FIXTURE ? async () => JSON.parse(readFileSync(process.env.COSTS_FIXTURE, 'utf8')) : async () => [];
 const types = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css',
@@ -29,6 +34,7 @@ createServer(async (req, res) => {
       '/api/sheet-import': (r, c) => handleImport(r, c),
       '/api/health': (_r, c) => health(c),
       '/api/costs': (r, c) => handleCosts(r, c),
+      '/api/places': (r, c) => handlePlaces(r, c),
     };
     if (routes[url.pathname]) {
       const chunks = [];
@@ -37,7 +43,7 @@ createServer(async (req, res) => {
         method: req.method, headers: req.headers,
         body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks),
       });
-      const response = await routes[url.pathname](request, { code, store: () => store, sheet, sheetCosts });
+      const response = await routes[url.pathname](request, { code, store: () => store, sheet, sheetCosts, places: process.env.PLACES, fetch: placesFetch });
       res.writeHead(response.status, Object.fromEntries(response.headers));
       res.end(Buffer.from(await response.arrayBuffer()));
       return;

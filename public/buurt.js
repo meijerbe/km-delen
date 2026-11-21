@@ -4,8 +4,8 @@ import {
   Scene, PerspectiveCamera, WebGLRenderer, Color, Fog, HemisphereLight, DirectionalLight, AmbientLight,
   Group, Mesh, InstancedMesh, Object3D, BoxGeometry, CylinderGeometry, ConeGeometry, IcosahedronGeometry, SphereGeometry,
   PlaneGeometry, ExtrudeGeometry, ShapeGeometry, Shape, BufferGeometry, Float32BufferAttribute,
-  MeshLambertMaterial, MeshStandardMaterial, MeshBasicMaterial, Raycaster, Vector2, Vector3, MathUtils, PCFSoftShadowMap,
-  SRGBColorSpace, DoubleSide, OrbitControls, mergeGeometries,
+  MeshLambertMaterial, MeshStandardMaterial, MeshBasicMaterial, Raycaster, Vector2, Vector3, MathUtils, PCFShadowMap,
+  SRGBColorSpace, DoubleSide, OrbitControls, mergeGeometries, TorusGeometry, CanvasTexture,
 } from './vendor/three-bundle.js';
 
 const PAL = {
@@ -140,7 +140,57 @@ function instanced(geo, material, items, place, colorOf) {
   return m;
 }
 
-export async function createDiorama(container, { onHonk } = {}) {
+/** Veelhoek naar buiten verschuiven met d meter (voor de kasteelmuur om een pand heen) */
+function offsetPoly(p, d) {
+  const n = p.length, area = p.reduce((a, [x, y], i) => { const [x2, y2] = p[(i + 1) % n]; return a + (x * y2 - x2 * y); }, 0);
+  const s = area > 0 ? 1 : -1;
+  return p.map((cur, i) => {
+    const prev = p[(i + n - 1) % n], next = p[(i + 1) % n];
+    const e1 = [cur[0] - prev[0], cur[1] - prev[1]], e2 = [next[0] - cur[0], next[1] - cur[1]];
+    const l1 = Math.hypot(...e1) || 1, l2 = Math.hypot(...e2) || 1;
+    const n1 = [(e1[1] / l1) * s, (-e1[0] / l1) * s], n2 = [(e2[1] / l2) * s, (-e2[0] / l2) * s];
+    const bx = n1[0] + n2[0], by = n1[1] + n2[1], bl = Math.hypot(bx, by) || 1;
+    const cos = (n1[0] * bx + n1[1] * by) / bl;
+    const k = Math.min(3, 1 / Math.max(0.33, cos));
+    return [cur[0] + (bx / bl) * d * k, cur[1] + (by / bl) * d * k];
+  });
+}
+
+/** Bord met tekst als textuur */
+function signTexture(text, bg, fg) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 160;
+  const g = c.getContext('2d');
+  g.fillStyle = bg; g.fillRect(0, 0, 512, 160);
+  g.fillStyle = fg; g.font = '800 64px Nunito, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, 256, 84);
+  const t = new CanvasTexture(c); t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
+/** Broodkarretje in ijscowagen-stijl */
+function breadVan() {
+  const g = new Group();
+  const cream = mat('#FFF4DC'), pink = mat('#FF9EB5'), mint = mat('#9FE3C9'), tyre = mat('#2C2F33'), glassM = mat('#CFE8F6');
+  const body = new Mesh(new BoxGeometry(4.6, 2.3, 2.1), cream); body.position.set(-0.4, 1.55, 0);
+  const cab = new Mesh(new BoxGeometry(1.4, 1.6, 2.0), cream); cab.position.set(2.5, 1.2, 0);
+  const wind = new Mesh(new BoxGeometry(0.1, 0.8, 1.8), glassM); wind.position.set(3.2, 1.55, 0);
+  const s1 = new Mesh(new BoxGeometry(4.62, 0.28, 2.12), pink); s1.position.set(-0.4, 0.75, 0);
+  const s2 = new Mesh(new BoxGeometry(4.62, 0.22, 2.12), mint); s2.position.set(-0.4, 2.55, 0);
+  const loaf = new Mesh(new SphereGeometry(1, 16, 12), mat('#D9994A')); loaf.scale.set(2.1, 0.85, 0.95); loaf.position.set(-0.4, 3.35, 0);
+  const tex = signTexture('Bakker Ids 🥖', '#FFFFFF', '#C8733F');
+  const signM = new MeshBasicMaterial({ map: tex });
+  const sign1 = new Mesh(new PlaneGeometry(3.4, 1.05), signM); sign1.position.set(-0.4, 1.7, 1.06);
+  const sign2 = sign1.clone(); sign2.position.z = -1.06; sign2.rotation.y = Math.PI;
+  g.add(body, cab, wind, s1, s2, loaf, sign1, sign2);
+  for (const [x, z] of [[2.2, 1.0], [2.2, -1.0], [-1.8, 1.0], [-1.8, -1.0]]) {
+    const w = new Mesh(new CylinderGeometry(0.45, 0.45, 0.3, 14), tyre); w.rotation.x = Math.PI / 2; w.position.set(x, 0.45, z); g.add(w);
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  g.scale.setScalar(1.7);
+  return g;
+}
+
+export async function createDiorama(container, { onHonk, onBread } = {}) {
   const data = await (await fetch('buurt.json', { cache: 'force-cache' })).json();
   const H = data.half, D = H * 2;
   const inBuilding = buildingIndex(data.buildings);
@@ -150,7 +200,7 @@ export async function createDiorama(container, { onHonk } = {}) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  renderer.shadowMap.type = PCFShadowMap;
   container.appendChild(renderer.domElement);
 
   const scene = new Scene();
@@ -372,6 +422,121 @@ export async function createDiorama(container, { onHonk } = {}) {
     marker.position.set(x, 9, -y);
   };
 
+  // ---------- labels boven plekken ----------
+  const tags = [];
+  const addTag = (html, obj, y) => {
+    const el = document.createElement('div'); el.className = 'place-label'; el.innerHTML = html;
+    container.appendChild(el); tags.push({ el, obj, y });
+  };
+
+  // ---------- broodkarretje: rijdt door de straten ----------
+  const nodes = new Map();
+  const nk = (x, y) => `${Math.round(x)},${Math.round(y)}`;
+  for (const r of streets) for (let i = 0; i < r.l.length - 1; i++) {
+    const [a, b] = [r.l[i], r.l[i + 1]], ka = nk(...a), kb = nk(...b);
+    if (ka === kb) continue;
+    if (!nodes.has(ka)) nodes.set(ka, { x: a[0], y: a[1], nb: new Set() });
+    if (!nodes.has(kb)) nodes.set(kb, { x: b[0], y: b[1], nb: new Set() });
+    nodes.get(ka).nb.add(kb); nodes.get(kb).nb.add(ka);
+  }
+  const van = breadVan(); scene.add(van);
+  const keys = [...nodes.keys()].filter((k) => { const n = nodes.get(k); return inside(n.x, n.y, 10); });
+  const ids = (data.shops || []).find((sh) => /\bids\b/i.test(sh.name));
+  const nearestNode = (x, y) => keys.reduce((best, k) => { const n = nodes.get(k), d = Math.hypot(n.x - x, n.y - y); return d < best.d ? { k, d } : best; }, { k: keys[0], d: Infinity }).k;
+  let vanFrom = keys.length ? nearestNode(ids?.x ?? 0, ids?.y ?? 0) : null;
+  let vanTo = vanFrom ? [...nodes.get(vanFrom).nb][0] : null, vanT = 0, vanAng = 0, vanHop = 0, vanPause = 0;
+  van.visible = !!vanTo;
+  const nextNode = (from, cur) => {
+    const nb = [...nodes.get(cur).nb].filter((k) => k !== from && inside(nodes.get(k).x, nodes.get(k).y, 6));
+    if (!nb.length) return from;                                       // doodlopend: omkeren
+    const a = nodes.get(from), b = nodes.get(cur), dir = Math.atan2(b.y - a.y, b.x - a.x);
+    // liefst rechtdoor, soms afslaan
+    nb.sort((k1, k2) => { const turn = (k) => { const c = nodes.get(k); return Math.abs(((Math.atan2(c.y - b.y, c.x - b.x) - dir + 3 * Math.PI) % (2 * Math.PI)) - Math.PI); }; return turn(k1) - turn(k2); });
+    return Math.random() < 0.65 ? nb[0] : nb[Math.floor(Math.random() * nb.length)];
+  };
+  const moveVan = (dt) => {
+    if (!vanTo) return;
+    if (vanPause > 0) { vanPause -= dt; return; }
+    const a = nodes.get(vanFrom), b = nodes.get(vanTo), L = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    vanT += (7 * dt) / L;
+    if (vanT >= 1) {
+      vanT = 0; const nx = nextNode(vanFrom, vanTo); vanFrom = vanTo; vanTo = nx;
+      if (ids && Math.hypot(nodes.get(vanFrom).x - ids.x, nodes.get(vanFrom).y - ids.y) < 25) vanPause = 3;   // even bij de bakker
+      return;
+    }
+    const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
+    const x = a.x + (b.x - a.x) * vanT + uy * 1.8, y = a.y + (b.y - a.y) * vanT - ux * 1.8;   // rechts rijden
+    const target = Math.atan2(uy, ux);
+    let d = target - vanAng; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+    vanAng += d * Math.min(1, dt * 6);
+    if (vanHop > 0) vanHop = Math.max(0, vanHop - dt * 2.5);
+    van.position.set(x, 0.26 + Math.sin(vanHop * Math.PI) * 2, -y); van.rotation.y = vanAng;
+  };
+  addTag('🥖 <b>Brood!</b>', van, 9);
+
+  const placeList = [];
+  // ---------- bakker Ids ----------
+  const bakeries = [];
+  const decorateBakery = (x, y, name) => {
+    const b = data.buildings.find((bb) => inPoly(x, y, bb.p)) || data.buildings.reduce((best, bb) => {
+      const [cx, cy] = bb.p.reduce(([a, c], [px, py]) => [a + px / bb.p.length, c + py / bb.p.length], [0, 0]);
+      const d = Math.hypot(cx - x, cy - y); return d < best.d ? { bb, d } : best;
+    }, { bb: null, d: 30 }).bb;
+    const h = b ? b.h : 4;
+    const croissant = new Mesh(new TorusGeometry(2.6, 1.15, 10, 18, Math.PI * 1.25), mat('#E2A24A'));
+    croissant.position.set(x, h + 4, -y); croissant.rotation.set(-0.3, 0, Math.PI * 0.12); croissant.scale.setScalar(1.3);
+    croissant.castShadow = true;
+    const glow = new Mesh(new SphereGeometry(1.2, 12, 8), new MeshBasicMaterial({ color: '#FFF2C8' })); glow.position.set(x, h + 1.4, -y);
+    scene.add(croissant, glow);
+    bakeries.push(croissant);
+    addTag(`🥐 <b>${name}</b>`, croissant, 6);
+  };
+  if (ids) { decorateBakery(ids.x, ids.y, 'Bakker Ids'); placeList.push({ kind: 'bakker', label: 'Bakker Ids', x: ids.x, y: ids.y }); }
+
+  // ---------- kasteeltjes ----------
+  const flags = [];
+  const castle = (x, y, hh, title) => {
+    const b = data.buildings.find((bb) => inPoly(x, y, bb.p));
+    const foot = b ? b.p : [[x - 6, y - 5], [x + 6, y - 5], [x + 6, y + 5], [x - 6, y + 5]];
+    const h = b ? b.h : 10;
+    const stone = hh === 'Klein' ? '#F7C3AE' : '#B9D3F3', roofCol = hh === 'Klein' ? '#E8704F' : '#3F7FD1';
+    const g = new Group();
+    const shell = offsetPoly(foot, 0.9);
+    const wallGeo = new ExtrudeGeometry(shapeOf(shell), { depth: h + 1.4, bevelEnabled: false }); wallGeo.rotateX(-Math.PI / 2);
+    g.add(new Mesh(wallGeo, mat(stone)));
+    // kantelen
+    const merlons = [];
+    for (let i = 0; i < shell.length; i++) for (const q of along([shell[i], shell[(i + 1) % shell.length]], 2.4, 0, `m${i}`)) merlons.push(q);
+    const mm = instanced(new BoxGeometry(1.2, 1.5, 1.2), mat(stone), merlons, (o, q) => { o.position.set(q.x, h + 2.15, -q.y); o.rotation.y = q.ang; });
+    if (mm) g.add(mm);
+    // torentjes op de scherpste hoeken
+    const corners = shell.map((c, i) => {
+      const a = shell[(i + shell.length - 1) % shell.length], b2 = shell[(i + 1) % shell.length];
+      const v1 = [a[0] - c[0], a[1] - c[1]], v2 = [b2[0] - c[0], b2[1] - c[1]];
+      return { c, turn: Math.abs(Math.atan2(v1[0] * v2[1] - v1[1] * v2[0], v1[0] * v2[0] + v1[1] * v2[1])) };
+    }).sort((p1, p2) => p1.turn - p2.turn).slice(0, Math.min(4, shell.length));
+    corners.forEach(({ c }, i) => {
+      const th = h + 5 + (i === 0 ? 3 : 0);
+      const tower = new Mesh(new CylinderGeometry(2.3, 2.5, th, 14), mat(stone)); tower.position.set(c[0], th / 2, -c[1]);
+      const cone = new Mesh(new ConeGeometry(3.1, 5, 14), mat(roofCol)); cone.position.set(c[0], th + 2.5, -c[1]);
+      g.add(tower, cone);
+      if (i === 0) {
+        const pole = new Mesh(new CylinderGeometry(0.1, 0.1, 4, 6), mat('#6B5B4A')); pole.position.set(c[0], th + 6.5, -c[1]);
+        const flag = new Mesh(new PlaneGeometry(3.2, 2), new MeshLambertMaterial({ color: roofCol, side: DoubleSide }));
+        flag.position.set(c[0] + 1.6, th + 7.6, -c[1]);
+        g.add(pole, flag); flags.push({ flag, x: c[0] });
+        addTag(`🏰 <b>${title}</b>`, cone, 10);
+      }
+    });
+    // poort
+    const door = new Mesh(new BoxGeometry(2.6, 3.4, 0.4), mat('#8A5A3B'));
+    const [e0, e1] = [shell[0], shell[1]], mx = (e0[0] + e1[0]) / 2, my = (e0[1] + e1[1]) / 2;
+    door.position.set(mx, 1.7, -my); door.rotation.y = Math.atan2(e1[1] - e0[1], e1[0] - e0[0]);
+    g.add(door);
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    scene.add(g);
+  };
+
   // ---------- camera ----------
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true; controls.dampingFactor = 0.08;
@@ -405,7 +570,8 @@ export async function createDiorama(container, { onHonk } = {}) {
       if (hit && Math.abs(hit.point.x) <= H && Math.abs(hit.point.z) <= H) { const cb = pickCb; pickCb = null; cb(hit.point.x, -hit.point.z); }
       return;
     }
-    if (car.visible && ray.intersectObjects([car, marker], true).length) { hop = 1; onHonk?.(); }
+    if (car.visible && ray.intersectObjects([car, marker], true).length) { hop = 1; onHonk?.(); return; }
+    if (van.visible && ray.intersectObject(van, true).length) { vanHop = 1; vanPause = 2; onBread?.(); }
   });
 
   // ---------- dag en nacht ----------
@@ -465,9 +631,19 @@ export async function createDiorama(container, { onHonk } = {}) {
     if (hop > 0) { hop = Math.max(0, hop - dt * 2.5); car.position.y = 0.26 + Math.sin(hop * Math.PI) * 2.2; }
     moveWalkers(clock);
     moveClouds(clock);
+    moveVan(dt);
+    flags.forEach((f, i) => { f.flag.rotation.y = Math.sin(clock * 3 + i) * 0.25; });
+    bakeries.forEach((c) => { c.rotation.y = clock * 0.6; });
     controls.update();
     renderer.render(scene, camera);
     placeLabel();
+    const rr = renderer.domElement.getBoundingClientRect();
+    for (const t of tags) {
+      tmp.setFromMatrixPosition(t.obj.matrixWorld); tmp.y += t.y; tmp.project(camera);
+      const dist = camera.position.distanceTo(t.obj.getWorldPosition(new Vector3()));
+      t.el.style.transform = `translate(-50%, -100%) translate(${(tmp.x * 0.5 + 0.5) * rr.width}px, ${(-tmp.y * 0.5 + 0.5) * rr.height}px)`;
+      t.el.style.opacity = tmp.z < 1 && t.obj.visible && dist < 700 ? 1 : 0;
+    }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -479,8 +655,22 @@ export async function createDiorama(container, { onHonk } = {}) {
     },
     flyToCar() { if (car.visible) flyTo(car.position.clone().setY(0), new Vector3(30, 36, 46)); },
     flyOverview() { flyTo(new Vector3(0, 0, 0), overview()); },
+    /** Naar een kaartpunt (m t.o.v. het midden) vliegen */
+    flyToPoint(x, y, dist = 60) { flyTo(new Vector3(x, 0, -y), new Vector3(dist * 0.45, dist * 0.55, dist * 0.7)); },
+    get places() { return placeList; },
+    debug: () => ({ bakeries: bakeries.map((b) => b.position.toArray().map(Math.round)), van: van.position.toArray().map(Math.round), vanVisible: van.visible, cam: camera.position.toArray().map(Math.round), target: controls.target.toArray().map(Math.round), fly: !!fly }),
     pick() { return new Promise((resolve) => { pickCb = (x, y) => resolve([x, y]); }); },
     cancelPick() { pickCb = null; },
+    /** Plekken van de server: [{ kind, hh, label, rd:[x,y] }] */
+    setPlaces(places) {
+      for (const p of places) {
+        const x = p.rd[0] - data.rd[0], y = p.rd[1] - data.rd[1];
+        if (!inside(x, y, 0)) continue;
+        placeList.push({ ...p, x, y });
+        if (p.kind === 'kasteel') castle(x, y, p.hh, p.label);
+        else if (p.kind === 'bakker' && !ids) decorateBakery(x, y, p.label);
+      }
+    },
     pause() { running = false; },
     resume() { if (!running) { running = true; last = performance.now(); daylight(); requestAnimationFrame(frame); } },
     data,
