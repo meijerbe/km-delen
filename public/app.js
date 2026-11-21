@@ -450,7 +450,8 @@ $('btnSheetImport').onclick = async () => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Fout (${res.status})`);
     await sync();
-    toast(data.added ? `${data.added} regel(s) uit de spreadsheet toegevoegd` : 'Niets nieuws in de spreadsheet');
+    const msg = data.added ? `${data.added} regel(s) uit de spreadsheet toegevoegd` : 'Niets nieuws in de spreadsheet';
+    toast(data.unknownUsers?.length ? `${msg}. Overgeslagen (onbekende gebruiker): ${data.unknownUsers.join(', ')}` : msg);
   } catch (err) {
     toast(err instanceof TypeError ? 'Geen verbinding' : err.message);
   } finally { b.disabled = false; b.textContent = 'Formulier-invoer ophalen'; }

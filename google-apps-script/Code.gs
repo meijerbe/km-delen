@@ -69,12 +69,15 @@ function columns_(sheet) {
     for (var i = 0; i < header.length; i++) if (re.test(String(header[i]).trim())) return i + 1;
     return 0;
   };
+  const kmCol = find(/^aantal\s+kilomet/i);
   const cols = {
     ts: find(/^(tijdstempel|timestamp)/i),
     date: find(/^(date|datum)\b/i),
-    hh: find(/bestuurder/i),
+    hh: find(/^(bestuurder|gebruiker)/i),
     bij: find(/bijrijder/i),
-    km: find(/kilometer/i),
+    km: kmCol || find(/kilomet(?!erstand)/i),
+    stand: find(/kilometerstand/i),
+    getankt: find(/getankt/i),
     cost: find(/kosten/i),
     lp: find(/literprijs/i),
     id: find(new RegExp('^' + ID_HEADER + '$', 'i')),
@@ -106,12 +109,28 @@ function upsert_(sheet, cols, e) {
   set(cols.hh, e.hh);
   set(cols.bij, e.type === 'rit' ? (e.bij || '') : '');
   set(cols.km, e.type === 'rit' ? e.km : '');
+  set(cols.stand, e.type === 'rit' && e.stand != null ? e.stand : '');
+  set(cols.getankt, e.type === 'tank' ? yesNo_(sheet, cols).yes : yesNo_(sheet, cols).no);
   set(cols.cost, e.type === 'tank' ? e.cost : '');
   set(cols.lp, e.type === 'tank' && e.lp != null ? e.lp : '');
   set(cols.id, e.id);
   if (!row) row = sheet.getLastRow() + 1;
   sheet.getRange(row, 1, 1, width).setValues([values]);
   return { id: e.id, ok: true, row: row };
+}
+
+/** Ja/nee zoals het formulier ze al gebruikt in de kolom "Getankt?". */
+function yesNo_(sheet, cols) {
+  const out = { yes: 'Ja', no: 'Nee' };
+  if (!cols.getankt || sheet.getLastRow() < 2) return out;
+  const vals = sheet.getRange(2, cols.getankt, sheet.getLastRow() - 1, 1).getValues().map(function (r) { return String(r[0]).trim(); });
+  for (var i = 0; i < vals.length; i++) {
+    if (/^(ja|yes|j|y)$/i.test(vals[i])) { out.yes = vals[i]; break; }
+  }
+  for (var j = 0; j < vals.length; j++) {
+    if (/^(nee|no|n)$/i.test(vals[j])) { out.no = vals[j]; break; }
+  }
+  return out;
 }
 
 function remove_(sheet, cols, id) {

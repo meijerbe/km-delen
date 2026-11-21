@@ -40,6 +40,7 @@ export const byTime = (a, b) => (rideKey(a) < rideKey(b) ? -1 : rideKey(a) > rid
  *   Zo verschuift een vergeten rit die je achteraf invult automatisch km van de
  *   eerstvolgende stand-rit naar de juiste bestuurder.
  * - Eerste stand ooit: de ingevoerde km (er is nog geen vorige stand).
+ * - `vast` (ingelezen uit de sheet): de km uit de sheet tellen, de stand zet alleen de teller.
  * Geeft Map id → { km, derived, warn } en `counter`: de verwachte stand nu (of null).
  */
 export function computeRides(entries) {
@@ -47,7 +48,10 @@ export function computeRides(entries) {
   const out = new Map();
   let counter = null;
   for (const r of rides) {
-    if (r.stand != null) {
+    if (r.stand != null && r.vast) {
+      out.set(r.id, { km: r.km || 0, derived: false, warn: false });
+      counter = r.stand;
+    } else if (r.stand != null) {
       if (counter != null) {
         const diff = r.stand - counter;
         const warn = diff < 0 || diff > 2000;

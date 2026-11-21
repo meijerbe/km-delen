@@ -46,12 +46,14 @@ function fakeAppsScript(initial) {
   return { grid, fetch, cfg: { url: 'https://script.example/exec', token: 'tok', fetch } };
 }
 
-const HEADER = ['Tijdstempel', 'Date', 'Bestuurder', 'Bijrijders', 'Aantal kilometers', 'Kosten Tanken', 'Literprijs'];
+// Echte koppen van form_data
+const HEADER = ['Timestamp', 'Date', 'Aantal kilometers', 'Eind kilometerstand', 'Bijrijders', 'Getankt?', 'Kosten tanken', 'Literprijs', 'Rate the trip', 'Gebruiker', 'Rating'];
+const ID = 11;   // App-id komt in de 12e kolom
 const SHEET_ROWS = [
   HEADER,
-  [new Date(2026, 3, 19, 10), new Date(2026, 3, 19), 'Groot', '', 207, 78.46, 2.25],
-  [new Date(2026, 3, 21, 9), new Date(2026, 3, 21), 'Groot', '', 12, '', ''],
-  [new Date(2026, 3, 22, 9), new Date(2026, 3, 22), 'klein', 'Groot', 7, '', ''],
+  [new Date(2026, 3, 19, 10), new Date(2026, 3, 19), 207, 45207, '', 'Ja', 78.46, 2.25, '', 'Groot', 4],
+  [new Date(2026, 3, 21, 9), new Date(2026, 3, 21), 12, 45219, '', 'Nee', '', '', '', 'Groot', ''],
+  [new Date(2026, 3, 22, 9), new Date(2026, 3, 22), 7, 45226, 'Groot', 'Nee', '', '', '', 'klein', 5],
 ];
 
 const rit = (over = {}) => ({ id: 'r1', type: 'rit', date: '2026-11-21', t: 1, hh: 'Klein', km: 12, upd: 100, ...over });
@@ -62,15 +64,17 @@ const req = (method, path, body) => new Request(`http://x${path}`, {
 // ---------- parseSheet ----------
 test('parseSheet: rit + tankbeurt splitsen, app-regels en onleesbare regels overslaan, stabiele ids', () => {
   const header = [...HEADER, 'App-id'];
+  const row = (date, km, stand, tank, cost, lp, user, id = '') => ['', date, km, stand, '', tank, cost, lp, '', user, '', id];
   const rows = [
-    ['', '2026-04-19', 'Groot', '', 207, 78.46, 2.25, ''],
-    ['', '19-4-2026', 'Groot', '', '12', '', '', ''],
-    ['', '2026-04-21', 'Groot', '', 12, '', '', ''],            // zelfde inhoud als hierboven → eigen id
-    ['', '2026-04-22', 'Klein', '', 7, '', '', 'abc123'],       // komt uit de app
-    ['', '2026-04-23', 'Midden', '', 7, '', '', ''],            // onbekende bestuurder
-    ['', '', '', '', '', '', '', ''],                            // lege regel
+    row('2026-04-19', 207, '', 'Ja', 78.46, 2.25, 'Groot'),
+    row('19-4-2026', '12', '', 'Nee', '', '', 'Groot'),
+    row('2026-04-21', 12, '', 'Nee', '', '', 'Groot'),         // zelfde inhoud als hierboven → eigen id
+    row('2026-04-22', 7, '', 'Nee', '', '', 'Klein', 'abc123'), // komt uit de app
+    row('2026-04-23', 7, '', 'Nee', '', '', 'Sem'),             // onbekende gebruiker
+    new Array(12).fill(''),                                       // lege regel
   ];
-  const { entries, skipped } = parseSheet(header, rows, 5);
+  const { entries, skipped, unknownUsers } = parseSheet(header, rows, 5);
+  assert.deepEqual(unknownUsers, ['Sem']);
   assert.deepEqual(entries.map((e) => [e.type, e.date, e.hh, e.km ?? e.cost]), [
     ['rit', '2026-04-19', 'Groot', 207], ['tank', '2026-04-19', 'Groot', 78.46],
     ['rit', '2026-04-19', 'Groot', 12], ['rit', '2026-04-21', 'Groot', 12],
@@ -87,16 +91,17 @@ test('app-regels komen in form_data, bijwerken en verwijderen via App-id', async
   const ctx = { code: 'c', store: () => store, sheet: sheet.cfg };
 
   await handle(req('POST', '/api/entries', { puts: [rit({ bij: 'Groot' }), { id: 't1', type: 'tank', date: '2026-11-21', t: 2, hh: 'Groot', cost: 80.5, lp: 2.3, upd: 101 }] }), ctx);
-  assert.equal(sheet.grid[0][7], 'App-id');
-  const row = (id) => sheet.grid.find((r) => r[7] === id);
-  assert.deepEqual(row('r1').slice(1, 7).map((v) => (v instanceof Date ? v.toDateString() : v)),
-    [new Date(2026, 10, 21).toDateString(), 'Klein', 'Groot', 12, '', '']);
+  assert.equal(sheet.grid[0][ID], 'App-id');
+  const row = (id) => sheet.grid.find((r) => r[ID] === id);
+  // Timestamp, Date, km, stand, bijrijders, getankt, kosten, literprijs, rate, gebruiker, rating
+  assert.deepEqual(row('r1').slice(1, 11).map((v) => (v instanceof Date ? v.toDateString() : v)),
+    [new Date(2026, 10, 21).toDateString(), 12, '', 'Groot', 'Nee', '', '', '', 'Klein', '']);
   assert.ok(row('r1')[0] instanceof Date);
-  assert.deepEqual(row('t1').slice(2, 7), ['Groot', '', '', 80.5, 2.3]);
+  assert.deepEqual(row('t1').slice(2, 10), ['', '', '', 'Ja', 80.5, 2.3, '', 'Groot']);
   assert.deepEqual(await store.unsynced(10), []);
 
   await handle(req('POST', '/api/entries', { puts: [rit({ km: 15, upd: 200 })] }), ctx);
-  assert.equal(row('r1')[4], 15);
+  assert.equal(row('r1')[2], 15);
   assert.equal(sheet.grid.length, 6);
 
   await handle(req('POST', '/api/entries', { dels: [{ id: 't1', upd: 300 }] }), ctx);
@@ -113,7 +118,7 @@ test('sheet onbereikbaar: opslaan lukt, health stuurt het later alsnog', async (
   assert.equal((await store.unsynced(10)).length, 1);
   assert.equal((await health({ store: () => store, sheet: sheet.cfg })).status, 200);
   assert.equal((await store.unsynced(10)).length, 0);
-  assert.ok(sheet.grid.some((r) => r[7] === 'r1'));
+  assert.ok(sheet.grid.some((r) => r[ID] === 'r1'));
 });
 
 test('import: bestaande regels inlezen, niet terugschrijven, geen dubbelingen, verwijderd blijft weg', async () => {
@@ -127,6 +132,8 @@ test('import: bestaande regels inlezen, niet terugschrijven, geen dubbelingen, v
   const list = (await (await handle(req('GET', '/api/entries'), ctx)).json()).entries;
   assert.equal(list.find((e) => e.type === 'tank').cost, 78.46);
   assert.equal(list.find((e) => e.hh === 'Klein').bij, 'Groot');
+  assert.equal(list.find((e) => e.hh === 'Klein').stand, 45226);
+  assert.ok(list.filter((e) => e.type === 'rit').every((e) => e.vast));
 
   r = await (await handleImport(req('POST', '/api/sheet-import'), ctx)).json();
   assert.equal(r.added, 0);
@@ -158,4 +165,15 @@ test('server werkt km van een stand-rit bij als er achteraf een rit tussen komt'
 test('pushToSheet zonder koppeling doet niets', async () => {
   assert.equal(await pushToSheet(memoryStore(), null), 0);
   await assert.rejects(importFromSheet(memoryStore(), null), /niet ingesteld/);
+});
+
+test('ingelezen ritten met stand houden hun km; de volgende app-rit rekent vanaf de laatste stand', async () => {
+  const sheet = fakeAppsScript(SHEET_ROWS);
+  const store = memoryStore();
+  const ctx = { code: 'c', store: () => store, sheet: sheet.cfg };
+  await handleImport(req('POST', '/api/sheet-import'), ctx);
+  await handle(req('POST', '/api/entries', { puts: [rit({ id: 'n', date: '2026-11-21', t: Date.now(), km: 0, stand: 45300 })] }), ctx);
+  const list = (await (await handle(req('GET', '/api/entries'), ctx)).json()).entries;
+  assert.deepEqual(list.filter((e) => e.type === 'rit').map((e) => e.km).sort((a, b) => a - b), [7, 12, 74, 207]);
+  assert.equal(sheet.grid.find((r) => r[ID] === 'n')[3], 45300);      // stand ook in de sheet
 });

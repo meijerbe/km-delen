@@ -91,3 +91,14 @@ test('parseNum leest komma, punt en duizendtallen', () => {
   assert.equal(parseNum('45.678'), 45.678);
   assert.ok(Number.isNaN(parseNum('')));
 });
+
+test('vaste km (uit de sheet) worden niet afgeleid, maar zetten wel de teller', () => {
+  const { km, counter } = computeRides([
+    rit('a', '2026-04-19', 1, 'Groot', 207, { stand: 45207, vast: true }),
+    rit('b', '2026-04-21', 2, 'Groot', 12, { stand: 45230, vast: true }),   // klopt niet met 45207+12
+    rit('c', '2026-04-22', 3, 'Klein', 0, { stand: 45240 }),
+  ]);
+  assert.equal(km.get('b').km, 12);
+  assert.equal(km.get('c').km, 10);
+  assert.equal(counter, 45240);
+});
