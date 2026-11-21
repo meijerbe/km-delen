@@ -1,0 +1,20 @@
+{
+  "name": "km-delen",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Kilometers en tankbeurten bijhouden voor een gedeelde auto",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "node scripts/dev-server.js",
+    "test": "node --test test/*.test.js",
+    "test:e2e": "playwright test",
+    "check": "node --check public/app.js && node --check public/core.js"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  }
+}
