@@ -22,6 +22,18 @@ Web-app om bij een gedeelde auto per rit bij te houden wie (stel **Klein** of **
 4. **Deployments → Redeploy**, zodat de variabelen actief worden.
 5. Open de link op de telefoon in Safari of Chrome, vul de groepscode in en kies *Zet op beginscherm*.
 
+### Koppeling met de Google Sheet
+
+De app schrijft elke rit en tankbeurt naar het tabblad `form_data`, net als het Google-formulier. Het tabblad Overview rekent dus gewoon door.
+
+1. Open de spreadsheet → **Uitbreidingen → Apps Script**, vervang de inhoud door [`google-apps-script/Code.gs`](google-apps-script/Code.gs) en sla op.
+2. **Projectinstellingen (tandwiel) → Scripteigenschappen → toevoegen**: `TOKEN` = dezelfde waarde als `SHEET_TOKEN` in Vercel.
+3. **Implementeren → Nieuwe implementatie → Web-app**. Uitvoeren als: *ik*, toegang: *iedereen*. Geef toestemming en kopieer de URL.
+4. Zet in Vercel `SHEET_WEBHOOK_URL` = die URL en redeploy.
+5. In de app: **Instellingen → Formulier-invoer ophalen** leest de bestaande regels eenmalig in (en later nieuwe formulier-invoer; dubbele regels worden overgeslagen).
+
+Het script voegt in `form_data` een kolom **App-id** toe; daarmee worden wijzigingen en verwijderingen in de app ook in de sheet doorgevoerd. Lukt het schrijven naar de sheet even niet, dan gaat het mee met de volgende wijziging of de health-check.
+
 De workflow *Database wakker houden* roept elke drie dagen `/api/health` aan, zodat Supabase het gratis project niet pauzeert.
 
 Daarna gaat elke push naar `main` automatisch live en krijgt elke pull request een eigen preview-link. GitHub Actions draait bij elke push de tests.
@@ -43,8 +55,9 @@ npm run test:e2e     # browsertests met nagebootste GPS-rit en twee telefoons
 | `public/index.html` | Schermen en opmaak |
 | `public/app.js` | Interface, GPS-meting, synchronisatie (wachtrij voor offline invoer) |
 | `public/core.js` | Pure rekenlogica: afstand, kilometerstanden, totalen, Excel-export |
-| `api/entries.js`, `api/health.js` | Vercel Functions: gegevens en gezondheidscheck |
-| `lib/` | Afhandeling, validatie en opslag (Postgres of in-memory) |
+| `api/` | Vercel Functions: gegevens, spreadsheet-import en gezondheidscheck |
+| `lib/` | Afhandeling, validatie, opslag (Postgres of in-memory) en spreadsheet-koppeling |
+| `google-apps-script/Code.gs` | Script in de Google Sheet: schrijft naar en leest uit `form_data` |
 | `test/`, `e2e/` | Unit- en browsertests |
 
 Beveiliging: de API vraagt de groepscode in header `x-groep`. Iedereen met de code kan lezen en schrijven; deel hem alleen met de vier gebruikers.

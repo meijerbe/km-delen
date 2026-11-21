@@ -443,6 +443,18 @@ $('btnManual').onclick = () => openSheet({ mode: 'manual', type: 'rit', hh: pick
 $('btnCopyAll').onclick = () => (entries.size ? copyText(excelText(all(), null, true), 'Gekopieerd — plak in cel A1 van een leeg blad') : toast('Nog niets ingevoerd'));
 $('btnSyncNow').onclick = () => sync().then(() => syncState === 'ok' && toast('Bijgewerkt'));
 $('btnLogout').onclick = () => showGate();
+$('btnSheetImport').onclick = async () => {
+  const b = $('btnSheetImport'); b.disabled = true; b.textContent = 'Bezig met ophalen…';
+  try {
+    const res = await fetch('/api/sheet-import', { method: 'POST', headers: { 'x-groep': code } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Fout (${res.status})`);
+    await sync();
+    toast(data.added ? `${data.added} regel(s) uit de spreadsheet toegevoegd` : 'Niets nieuws in de spreadsheet');
+  } catch (err) {
+    toast(err instanceof TypeError ? 'Geen verbinding' : err.message);
+  } finally { b.disabled = false; b.textContent = 'Formulier-invoer ophalen'; }
+};
 $('btnSaveSet').onclick = () => {
   const f = parseNum($('factor').value || '1');
   if (!(f > 0.8 && f < 1.2)) return toast('Kies een factor tussen 0,80 en 1,20');

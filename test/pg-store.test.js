@@ -32,3 +32,22 @@ test('Postgres ping', { skip: !url && 'TEST_POSTGRES_URL niet gezet' }, async ()
   const store = pgStore(url);
   try { await store.init(); await store.ping(); } finally { await store.end(); }
 });
+
+test('Postgres: wachtrij voor de spreadsheet', { skip: !url && 'TEST_POSTGRES_URL niet gezet' }, async () => {
+  const store = pgStore(url);
+  try {
+    await store.init();
+    const id = `q${Date.now()}`;
+    const data = { type: 'rit', date: '2026-11-21', hh: 'Klein', t: 1, km: 5 };
+    await store.upsert(id, data, 10, false);
+    assert.ok((await store.unsynced(1000)).some((r) => r.id === id));
+    await store.markSynced(id, 10);
+    assert.ok(!(await store.unsynced(1000)).some((r) => r.id === id));
+    await store.upsert(id, { ...data, km: 6 }, 11, false);
+    assert.ok((await store.unsynced(1000)).some((r) => r.id === id));
+    await store.upsert(`${id}i`, data, 12, false, { synced: true });
+    assert.ok(!(await store.unsynced(1000)).some((r) => r.id === `${id}i`));
+  } finally {
+    await store.end();
+  }
+});

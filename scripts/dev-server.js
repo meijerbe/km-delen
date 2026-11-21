@@ -4,13 +4,15 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { handle } from '../lib/handler.js';
+import { handle, handleImport, health } from '../lib/handler.js';
+import { sheetConfig } from '../lib/sheet.js';
 import { memoryStore } from '../lib/store.js';
 
 const root = fileURLToPath(new URL('../public/', import.meta.url));
 const port = Number(process.env.PORT || 4173);
 const code = process.env.GROUP_CODE || 'test';
 const store = memoryStore();
+const sheet = sheetConfig();   // optioneel: SHEET_WEBHOOK_URL en SHEET_TOKEN
 const types = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css',
   '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json',
@@ -19,14 +21,19 @@ const types = {
 createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${port}`);
   try {
-    if (url.pathname === '/api/entries') {
+    const routes = {
+      '/api/entries': (r, c) => handle(r, c),
+      '/api/sheet-import': (r, c) => handleImport(r, c),
+      '/api/health': (_r, c) => health(c),
+    };
+    if (routes[url.pathname]) {
       const chunks = [];
       for await (const c of req) chunks.push(c);
       const request = new Request(url, {
         method: req.method, headers: req.headers,
         body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks),
       });
-      const response = await handle(request, { code, store: () => store });
+      const response = await routes[url.pathname](request, { code, store: () => store, sheet });
       res.writeHead(response.status, Object.fromEntries(response.headers));
       res.end(Buffer.from(await response.arrayBuffer()));
       return;
