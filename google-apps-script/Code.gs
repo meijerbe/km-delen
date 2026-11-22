@@ -54,6 +54,7 @@ function doPost(e) {
 
 function doGet(e) {
   if (!checkToken_(e.parameter.token)) return json_({ ok: false, error: 'token' });
+  if (e.parameter.protections) return json_({ ok: true, protections: protectionReport_() });
   const sheet = sheet_();
   const values = sheet.getDataRange().getValues();
   const tz = Session.getScriptTimeZone();
@@ -172,10 +173,16 @@ function upsert_(sheet, cols, e) {
   set(cols.cost, e.type === 'tank' ? e.cost : '');
   set(cols.lp, e.type === 'tank' && e.lp != null ? e.lp : '');
   set(cols.id, e.id);
-  assertEditable_(sheet, row, Object.keys(vals).map(Number));
+  // Beveiligde kolommen overslaan; alleen datum, gebruiker en km/bedrag zijn echt nodig.
+  const must = [cols.date, cols.hh, e.type === 'tank' ? cols.cost : cols.km];
+  if (!cols.id) must.push(cols.ts);                 // zonder App-id is Timestamp de sleutel
+  const blocked = blockedCols_(sheet, row, Object.keys(vals).map(Number));
+  const blockedMust = blocked.filter(function (c) { return must.indexOf(c) >= 0; });
+  if (blockedMust.length) throw new Error('Beveiligd in ' + sheet.getName() + ' rij ' + row + ': kolom ' + blockedMust.map(colName_).join(', ') + ' — er is niets geschreven');
+  blocked.forEach(function (c) { delete vals[c]; });
   // Cel voor cel: andere (formule- of beveiligde) kolommen van de rij blijven onaangeroerd.
   Object.keys(vals).forEach(function (c) { sheet.getRange(row, Number(c)).setValue(vals[c]); });
-  return { id: e.id, ok: true, row: row };
+  return { id: e.id, ok: true, row: row, skipped: blocked.map(colName_) };
 }
 
 function yesNo_(sheet, cols) {
@@ -301,6 +308,20 @@ function upsertPayment_(e) {
   tryFormat_(sheet.getRange(row, 1), 'dd-mm-yyyy');
   tryFormat_(sheet.getRange(row, 4), '"€"#,##0.00');
   return { id: e.id, ok: true, row: row };
+}
+
+/** Overzicht van beveiligingen per tabblad (bereik, of wij mogen bewerken). Geen celinhoud. */
+function protectionReport_() {
+  return book_().getSheets().map(function (sh) {
+    const out = { tab: sh.getName(), ranges: [], sheet: null };
+    sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(function (p) {
+      out.ranges.push({ range: p.getRange().getA1Notation(), canEdit: p.canEdit(), warningOnly: p.isWarningOnly() });
+    });
+    sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function (p) {
+      out.sheet = { canEdit: p.canEdit(), warningOnly: p.isWarningOnly(), unprotected: p.getUnprotectedRanges().map(function (r) { return r.getA1Notation(); }) };
+    });
+    return out;
+  });
 }
 
 /** Getalnotatie zetten; in een tabel met getypte kolommen mag dat niet en slaan we het over. */

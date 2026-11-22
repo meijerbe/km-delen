@@ -314,3 +314,20 @@ test('beveiligde kolom in form_data: niets schrijven, melding noemt de kolom, re
   assert.ok(errors.some((e) => /Beveiligd in form_data rij \d+: kolom B/.test(e)), errors.join('\n'));
   assert.equal((await store.unsynced(10)).length, 1);
 });
+
+test('beveiligde bijzaak-kolom (Literprijs): tankbeurt komt er toch in, zonder die kolom', async () => {
+  const sheet = fakeAppsScript(SHEET_ROWS);
+  sheet.sheet.getProtections = (type) => (type === 'RANGE' ? [{
+    canEdit: () => false, isWarningOnly: () => false,
+    getRange: () => ({ getRow: () => 1, getLastRow: () => 1000, getColumn: () => 8, getLastColumn: () => 8 }),
+  }] : []);
+  const store = memoryStore();
+  const t = Date.UTC(2026, 10, 22, 9, 30);
+  await handle(req('POST', '/api/entries', { puts: [{ id: 'q1', type: 'tank', date: '2026-11-22', t, hh: 'Groot', cost: 61.5, lp: 1.95, upd: 10 }] }),
+    { code: 'c', store: () => store, sheet: sheet.cfg });
+  const row = sheet.grid.find((r) => r[0] instanceof Date && r[0].getTime() === Math.floor(t / 1000) * 1000);
+  assert.ok(row, 'tankbeurt staat erin');
+  assert.equal(row[6], 61.5);
+  assert.equal(row[7] ?? '', '');                                      // Literprijs overgeslagen
+  assert.equal((await store.unsynced(10)).length, 0);
+});
