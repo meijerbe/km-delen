@@ -214,12 +214,14 @@ function upsertCost_(e) {
 
 function paymentsSheet_() {
   const book = book_();
-  var sheet = book.getSheetByName(PAYMENTS_NAME);
-  if (!sheet) {
-    sheet = book.insertSheet(PAYMENTS_NAME);
-    sheet.getRange(1, 1, 1, PAYMENTS_HEADER.length).setValues([PAYMENTS_HEADER]);
-    if (sheet.setFrozenRows) sheet.setFrozenRows(1);
-  }
+  // Op naam zoeken, ongevoelig voor hoofdletters en spaties (een zelf aangemaakt tabblad heet soms "verrekeningen ").
+  const want = PAYMENTS_NAME.toLowerCase();
+  const found = book.getSheets().filter(function (s) { return s.getName().trim().toLowerCase() === want; })[0];
+  if (found) return found;
+  // Achteraan toevoegen: tussenvoegen verschuift beveiligde tabbladen, en dat mag niet.
+  const sheet = book.insertSheet(PAYMENTS_NAME, book.getSheets().length);
+  sheet.getRange(1, 1, 1, PAYMENTS_HEADER.length).setValues([PAYMENTS_HEADER]);
+  if (sheet.setFrozenRows) sheet.setFrozenRows(1);
   return sheet;
 }
 

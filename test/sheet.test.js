@@ -37,6 +37,7 @@ function fakeAppsScript(initial, costsInitial = [['Kosten', 'Beschrijving', 'Dat
         if (id !== 'SHEETID') throw new Error('onbekend id');
         return {
           getSheetByName: (n) => ({ form_data: sheet, 'Overige kosten': costsSheet, ...extra })[n] || null,
+          getSheets: () => [sheet, costsSheet, ...Object.values(extra)].map((sh, i) => ({ ...sh, getName: () => (['form_data', 'Overige kosten', ...Object.keys(extra)])[i] })),
           insertSheet: (n) => { const g = []; extraGrids[n] = g; extra[n] = makeSheet(g); extra[n].setFrozenRows = () => {}; return extra[n]; },
         };
       },
