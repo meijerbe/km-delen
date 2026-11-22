@@ -7,7 +7,7 @@ import { handle, handleImport, health } from '../lib/handler.js';
 import { memoryStore } from '../lib/store.js';
 
 // ---------- nagebootste Google Sheet + Apps Script ----------
-function makeSheet(grid) {
+function makeSheet(grid, name = 'tab') {
   const formats = {};
   const width = () => Math.max(...grid.map((r) => r.length));
   const range = (row, col, nr = 1, nc = 1) => ({
@@ -19,6 +19,7 @@ function makeSheet(grid) {
   });
   return {
     formats,
+    getName: () => name,
     getRange: range,
     getLastRow: () => grid.length,
     getLastColumn: () => width(),
@@ -30,15 +31,16 @@ function makeSheet(grid) {
 function fakeAppsScript(initial, costsInitial = [['Kosten', 'Beschrijving', 'Datum', 'Betaald door']]) {
   const grid = initial.map((r) => [...r]);
   const costsGrid = costsInitial.map((r) => [...r]);
-  const sheet = makeSheet(grid), costsSheet = makeSheet(costsGrid), extra = {}, extraGrids = {};
+  const sheet = makeSheet(grid, 'form_data'), costsSheet = makeSheet(costsGrid, 'Overige kosten'), extra = {}, extraGrids = {};
   const sandbox = {
     SpreadsheetApp: {
+      flush: () => {},
       openById: (id) => {
         if (id !== 'SHEETID') throw new Error('onbekend id');
         return {
           getSheetByName: (n) => ({ form_data: sheet, 'Overige kosten': costsSheet, ...extra })[n] || null,
-          getSheets: () => [sheet, costsSheet, ...Object.values(extra)].map((sh, i) => ({ ...sh, getName: () => (['form_data', 'Overige kosten', ...Object.keys(extra)])[i] })),
-          insertSheet: (n) => { const g = []; extraGrids[n] = g; extra[n] = makeSheet(g); extra[n].setFrozenRows = () => {}; return extra[n]; },
+          getSheets: () => [sheet, costsSheet, ...Object.values(extra)],
+          insertSheet: (n) => { const g = []; extraGrids[n] = g; extra[n] = makeSheet(g, n); extra[n].setFrozenRows = () => {}; return extra[n]; },
         };
       },
       getActive: () => { throw new Error('los script heeft geen actieve spreadsheet'); },
@@ -244,4 +246,17 @@ test('betalingen wachten zonder SHEET_COSTS', async () => {
     { code: 'c', store: () => store, sheet: { ...sheet.cfg, costs: false } });
   assert.equal(sheet.extraGrids.Verrekeningen, undefined);
   assert.equal((await store.unsynced(10)).length, 1);
+});
+
+test('betaling raakt form_data niet, ook als App-id daar ontbreekt en niet geschreven mag worden', async () => {
+  const header = SHEET_ROWS[0].filter((h) => !/app-id/i.test(h));
+  const sheet = fakeAppsScript([header, ...SHEET_ROWS.slice(1).map((r) => r.slice(0, header.length))]);
+  sheet.extraGrids.Verrekeningen = undefined;
+  const store = memoryStore();
+  const ctx = { code: 'c', store: () => store, sheet: sheet.cfg };
+  const before = JSON.stringify(sheet.grid);
+  await handle(req('POST', '/api/entries', { puts: [{ id: 'b9', type: 'betaling', date: '2026-11-22', t: 1, hh: 'Groot', amount: 0.1, upd: 5 }] }), ctx);
+  assert.equal(JSON.stringify(sheet.grid), before);                       // form_data onaangeroerd
+  assert.deepEqual(sheet.extraGrids.Verrekeningen[1].slice(1), ['Groot', 'Klein', 0.1, '', '', 'b9']);
+  assert.equal((await store.unsynced(10)).length, 0);
 });

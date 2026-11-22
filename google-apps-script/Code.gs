@@ -24,14 +24,19 @@ function doPost(e) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const sheet = sheet_();
-    const cols = columns_(sheet);
+    // form_data pas openen als een rit/tankbeurt het nodig heeft: kosten en betalingen raken dat tabblad niet.
+    var rides = null;
+    const ridesSheet = function () {
+      if (!rides) { const sheet = sheet_(); rides = { sheet: sheet, cols: columns_(sheet) }; }
+      return rides;
+    };
     const results = (body.ops || []).map(function (op) {
       try {
-        if (op.op === 'delete') return remove_(sheet, cols, op.id);
+        if (op.op === 'delete') return remove_(ridesSheet, op.id);
         if (op.entry && op.entry.type === 'kost') return upsertCost_(op.entry);
         if (op.entry && op.entry.type === 'betaling') return upsertPayment_(op.entry);
-        return upsert_(sheet, cols, op.entry);
+        const r = ridesSheet();
+        return upsert_(r.sheet, r.cols, op.entry);
       }
       catch (err) {
         // Met regelnummer/functie, zodat de fout in de Vercel-logs direct aan te wijzen is.
@@ -97,11 +102,20 @@ function columns_(sheet) {
     lp: find(/literprijs/i),
     id: find(new RegExp('^' + ID_HEADER + '$', 'i')),
   };
-  if (!cols.id) {
-    cols.id = header.filter(String).length + 1;
-    sheet.getRange(1, cols.id).setValue(ID_HEADER);
-  }
+  if (!cols.id) cols.id = addIdColumn_(sheet);
   return cols;
+}
+
+/** Kolom App-id helemaal achteraan toevoegen; lukt dat niet (beveiligd), dan een duidelijke melding. */
+function addIdColumn_(sheet) {
+  const col = sheet.getLastColumn() + 1;
+  try {
+    sheet.getRange(1, col).setValue(ID_HEADER);
+    SpreadsheetApp.flush();
+  } catch (err) {
+    throw new Error('Kolom ' + ID_HEADER + ' kan niet worden toegevoegd in ' + sheet.getName() + ' (beveiligd). Zet "' + ID_HEADER + '" zelf in een vrije kolom achteraan.');
+  }
+  return col;
 }
 
 function findRow_(sheet, cols, id) {
@@ -148,9 +162,13 @@ function yesNo_(sheet, cols) {
   return out;
 }
 
-function remove_(sheet, cols, id) {
-  var row = findRow_(sheet, cols, id);
-  if (row) { sheet.deleteRow(row); return { id: id, ok: true, removed: true }; }
+function remove_(ridesSheet, id) {
+  var row = 0, ridesError = null;
+  try {
+    const r = ridesSheet();
+    row = findRow_(r.sheet, r.cols, id);
+    if (row) { r.sheet.deleteRow(row); return { id: id, ok: true, removed: true }; }
+  } catch (err) { ridesError = err; }           // form_data onbruikbaar: verderop zoeken (kosten, betalingen)
   const costs = book_().getSheetByName(COSTS_NAME);
   if (costs) {
     const cc = costColumns_(costs);
@@ -162,6 +180,7 @@ function remove_(sheet, cols, id) {
     row = findRow_(pays, { id: PAYMENTS_HEADER.length }, id);
     if (row) { pays.deleteRow(row); return { id: id, ok: true, removed: true }; }
   }
+  if (ridesError) throw ridesError;
   return { id: id, ok: true, removed: false };
 }
 
@@ -177,10 +196,7 @@ function costColumns_(sheet) {
     cost: find(/^(kosten|bedrag)/i), desc: find(/^(beschrijving|omschrijving)/i),
     date: find(/^datum/i), hh: find(/betaald\s*door/i), id: find(new RegExp('^' + ID_HEADER + '$', 'i')),
   };
-  if (!cols.id) {
-    cols.id = sheet.getLastColumn() + 1;
-    sheet.getRange(1, cols.id).setValue(ID_HEADER);
-  }
+  if (!cols.id) cols.id = addIdColumn_(sheet);
   return cols;
 }
 
