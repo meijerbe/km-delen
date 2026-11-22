@@ -47,7 +47,7 @@
   .agenda-row > .muted{white-space:nowrap;flex:none;padding-top:2px}
   .agenda-row .who{flex:1;min-width:0;overflow-wrap:anywhere;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   a.btnlink{display:block;box-sizing:border-box;text-align:center;text-decoration:none;border-radius:16px;padding:12px 16px;background:var(--accent);color:#fff;font-weight:800}
-  .row{display:flex;gap:10px;align-items:center} .row > *{flex:1}
+  .row{display:flex;gap:10px;align-items:center} .row > *{flex:1;min-width:0}
   .between{display:flex;justify-content:space-between;align-items:center;gap:10px}
   .hero{margin:-4px -4px 4px;position:relative}
   .hero .car{display:block;width:100%;height:auto}
@@ -90,8 +90,14 @@
   label{display:block;font-size:13px;color:var(--muted);margin:14px 2px 5px;font-weight:700}
   input{width:100%;font:inherit;font-weight:600;padding:12px 14px;border-radius:14px;border:2px solid var(--line);background:var(--soft);color:var(--ink)}
   input:focus{outline:none;border-color:var(--sky)}
+  /* iOS Safari: datumvelden hebben een eigen minimale breedte, staan gecentreerd en zijn hoger dan andere velden */
+  input{min-width:0;max-width:100%}
+  input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-height:50px;line-height:1.3;text-align:left}
+  input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
+  input[type=date]::-webkit-calendar-picker-indicator{opacity:.55}
   .warn{background:color-mix(in srgb,#F2B33D 16%,var(--card));box-shadow:none}
   .hint{font-size:13px;color:var(--muted);margin:8px 2px 0;min-height:1.2em;font-weight:600}
+  .hint:empty{display:none}
   .err{color:var(--stop)}
   nav{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom) + 8px);background:var(--card);border-radius:22px;box-shadow:0 6px 28px rgba(80,60,30,.14);
     display:grid;grid-template-columns:repeat(5,1fr);padding:6px;z-index:5;max-width:540px;margin:0 auto}
