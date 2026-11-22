@@ -466,12 +466,12 @@ function renderAgenda() {
   el.style.display = 'block';
   const time = (ms) => new Date(ms).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
   const day = (ms) => new Date(ms).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
-  const who = (e) => (e.hh ? `${duo(e.hh, 22)}<b>${e.hh}</b>` : `<b>${esc(e.title || 'Gereserveerd')}</b>`);
+  const who = (e) => `<span class="who">${e.hh ? `${duo(e.hh, 22)}<b>${e.hh}</b>` : `<b>${esc(e.title || 'Gereserveerd')}</b>`}</span>`;
   const isToday = (ms) => new Date(ms).toDateString() === new Date().toDateString();
   const until = (e) => (e.allDay ? (isToday(e.end - 1) ? 'vandaag' : `t/m ${day(e.end - 1)}`) : isToday(e.end) ? `tot ${time(e.end)}` : `tot ${day(e.end)} ${time(e.end)}`);
   const when = (e) => (e.allDay ? `${day(e.start)}${e.end - e.start > 86400e3 ? ` – ${day(e.end - 1)}` : ''}` : `${isToday(e.start) ? 'vandaag' : day(e.start)} ${time(e.start)}`);
   el.innerHTML = `<div class="between"><b>🗓️ Reserveringen</b>${a.current ? '' : '<span class="pill" style="background:var(--soft)">nu vrij</span>'}</div>
-    ${a.current ? `<div class="agenda-row" id="agendaNow"><span class="muted small">Nu</span>${who(a.current)}<span class="muted small">${until(a.current)}</span></div>` : ''}
+    ${a.current ? `<div class="agenda-row" id="agendaNow"><span class="muted small">Nu · ${until(a.current)}</span>${who(a.current)}</div>` : ''}
     ${a.next.map((e) => `<div class="agenda-row"><span class="muted small">${when(e)}</span>${who(e)}</div>`).join('')}
     ${!a.current && !a.next.length ? '<div class="muted small" style="margin-top:6px">Geen reserveringen de komende twee weken.</div>' : ''}`;
 }
