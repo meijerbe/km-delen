@@ -44,7 +44,7 @@ createServer(async (req, res) => {
         method: req.method, headers: req.headers,
         body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks),
       });
-      const response = await routes[url.pathname](request, { code, store: () => store, sheet, sheetCosts, sheetPayments, places: process.env.PLACES, fetch: placesFetch });
+      const response = await routes[url.pathname](request, { code, store: () => store, sheet, sheetCosts, sheetPayments, sheetId: process.env.SPREADSHEET_ID, places: process.env.PLACES, fetch: placesFetch });
       res.writeHead(response.status, Object.fromEntries(response.headers));
       res.end(Buffer.from(await response.arrayBuffer()));
       return;

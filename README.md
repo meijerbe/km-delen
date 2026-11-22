@@ -66,6 +66,8 @@ Daarna gaat elke push naar `main` automatisch live en krijgt elke pull request e
 
 ## Ontwikkelen
 
+Zet bij elke wijziging een regel in `public/changelog.js` (nieuwste bovenaan); de app toont die onder *Overzicht → Over Disco Polo*.
+
 ```bash
 npm install
 npm run dev          # http://localhost:4173, groepscode "test", opslag in geheugen

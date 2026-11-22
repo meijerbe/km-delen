@@ -299,3 +299,13 @@ test('betaling invullen, openstaand bedrag zakt, en bevestigen als ontvangen', a
   expect(errors).toEqual([]);
   await ctx.close();
 });
+
+test('overzicht: link naar de spreadsheet, over de app en versiegeschiedenis', async ({ page }) => {
+  await login(page);
+  await expect(page.locator('#gate')).toBeHidden();
+  await tab(page, 'overzicht');
+  await expect(page.locator('#lnkSheet')).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/testsheet_abcdefghijklmnopqrstuvwxyz/edit');
+  await expect(page.locator('#about')).toContainText('Over Disco Polo');
+  await page.click('#about summary');
+  await expect(page.locator('#about')).toContainText('Betalingen tussen de stellen');
+});

@@ -94,7 +94,7 @@ test('/api/costs: code verplicht, en fout van Google netjes doorgeven', async ()
   const req = (code) => new Request('http://x/api/costs', { headers: { 'x-groep': code } });
   assert.equal((await handleCosts(req('fout'), { code: 'c' })).status, 401);
   const ok = await handleCosts(req('c'), { code: 'c', sheet: { costs: true }, sheetCosts: async () => [{ id: 'k1' }], sheetPayments: async () => [{ id: 'b1' }] });
-  assert.deepEqual(await ok.json(), { costs: [{ id: 'k1' }], payments: [{ id: 'b1' }], costsSync: true });
+  assert.deepEqual(await ok.json(), { costs: [{ id: 'k1' }], payments: [{ id: 'b1' }], costsSync: true, sheetUrl: null });
   const bad = await handleCosts(req('c'), { code: 'c', sheetCosts: async () => { throw new Error('403'); } });
   assert.equal(bad.status, 502);
 });

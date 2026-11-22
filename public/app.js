@@ -3,12 +3,13 @@ import {
   costInsights, categoryOf, toRD, fromRD, PARK_ID, parkingOf,
 } from './core.js';
 import { car, duo, logo } from './art.js';
+import { CHANGES, VERSION } from './changelog.js';
 import { startLine, stopLine, tankLine, compareLine, honk, jingle } from './fun.js';
 
 // ================= opslag op het toestel =================
 const KEY = {
   entries: 'kmdelen.v3.entries', outbox: 'kmdelen.v3.outbox', code: 'kmdelen.v3.code',
-  settings: 'kmdelen.v3.settings', active: 'kmdelen.v3.active', costs: 'kmdelen.v3.sheetcosts', payments: 'kmdelen.v3.sheetpayments',
+  settings: 'kmdelen.v3.settings', active: 'kmdelen.v3.active', costs: 'kmdelen.v3.sheetcosts', sheetUrl: 'kmdelen.v3.sheeturl', payments: 'kmdelen.v3.sheetpayments',
 };
 const mem = {};
 const local = {
@@ -489,15 +490,32 @@ function renderOverview() {
   bindItems(el);
   el.querySelectorAll('[data-copy]').forEach((b) => { b.onclick = () => copyText(excelText(all(), b.dataset.copy, false), `${monthLabel(b.dataset.copy)} gekopieerd`); });
 }
+function renderAbout() {
+  const fmt = (d) => new Date(`${d}T12:00`).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+  $('about').innerHTML = `
+    <h2>Over Disco Polo</h2>
+    <div class="card">
+      ${sheetUrl ? `<a class="primary full btnlink" id="lnkSheet" href="${esc(sheetUrl)}" target="_blank" rel="noopener">📊 Open de spreadsheet</a>
+      <p class="hint" style="margin:8px 2px 14px">De spreadsheet is de bron: ritten in <i>form_data</i>, kosten in <i>Overige kosten</i>, betalingen in <i>Verrekeningen</i>.</p>` : ''}
+      <p style="margin:0 0 8px">Disco Polo houdt bij wie hoeveel kilometer rijdt en tankt in onze lichtblauwe Polo uit 2008, zodat Klein en Groot de kosten eerlijk delen: brandstof naar km, vaste kosten 50/50.</p>
+      <p class="muted small" style="margin:0">Alles wordt gedeeld tussen onze telefoons en bijgeschreven in de spreadsheet. Werkt ook zonder bereik; het synchroniseert zodra er weer internet is.</p>
+      <details style="margin-top:14px"><summary style="font-weight:800;cursor:pointer">Versie ${VERSION} · wat is er nieuw?</summary>
+        ${CHANGES.map((c) => `<div style="margin-top:10px"><b>${c.v}</b> <span class="muted small">${fmt(c.date)}</span>
+          <ul style="margin:4px 0 0;padding-left:20px">${c.items.map((i) => `<li class="small">${esc(i)}</li>`).join('')}</ul></div>`).join('')}
+      </details>
+    </div>`;
+}
+
 function render() {
   $('idle').style.display = active ? 'none' : 'block';
   $('active').style.display = active ? 'block' : 'none';
   if (active) renderActive(); else renderIdle();
-  renderTank(); renderOverview(); renderCosts(); setSync(syncState, syncError);
+  renderTank(); renderOverview(); renderAbout(); renderCosts(); setSync(syncState, syncError);
   if (diorama && $('v-polo').classList.contains('on')) showParking();
 }
 
 // ================= kosten =================
+let sheetUrl = local.get(KEY.sheetUrl, null);
 let sheetCosts = local.get(KEY.costs, []), sheetPayments = local.get(KEY.payments, []), costsSync = false, costsError = '', costsLoadedAt = 0;
 async function loadCosts(force = false) {
   if (!code || (!force && Date.now() - costsLoadedAt < 60000)) return;
@@ -508,6 +526,7 @@ async function loadCosts(force = false) {
     if (!res.ok) throw new Error(data.error || `Fout (${res.status})`);
     sheetCosts = data.costs || []; local.set(KEY.costs, sheetCosts);
     sheetPayments = data.payments || []; local.set(KEY.payments, sheetPayments);
+    if (data.sheetUrl !== undefined) { sheetUrl = data.sheetUrl; local.set(KEY.sheetUrl, sheetUrl); renderAbout(); }
     costsError = ''; costsLoadedAt = Date.now();
   } catch (err) { costsError = err instanceof TypeError ? 'Offline: laatst bekende kosten' : err.message; }
   renderCosts();
@@ -842,7 +861,7 @@ function showView(v) {
   document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x.dataset.v === v));
   document.querySelectorAll('.view').forEach((el) => el.classList.toggle('on', el.id === `v-${v}`));
   if (v === 'polo') openDiorama(); else diorama?.pause();
-  if (v === 'kosten') loadCosts();
+  if (v === 'kosten' || v === 'overzicht') loadCosts();
   render(); window.scrollTo(0, 0);
 }
 $('btnGear').onclick = () => showView('inst');
