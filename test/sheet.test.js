@@ -35,6 +35,7 @@ function fakeAppsScript(initial, costsInitial = [['Kosten', 'Beschrijving', 'Dat
   const sheet = makeSheet(grid, 'form_data'), costsSheet = makeSheet(costsGrid, 'Overige kosten'), extra = {}, extraGrids = {};
   const sandbox = {
     SpreadsheetApp: {
+      ProtectionType: { RANGE: 'RANGE', SHEET: 'SHEET' },
       flush: () => {},
       openById: (id) => {
         if (id !== 'SHEETID') throw new Error('onbekend id');
@@ -62,7 +63,7 @@ function fakeAppsScript(initial, costsInitial = [['Kosten', 'Beschrijving', 'Dat
       : sandbox.doGet({ parameter: Object.fromEntries(u.searchParams) });
     return new Response(text, { status: 200 });
   };
-  return { grid, costsGrid, costsSheet, extraGrids, fetch, cfg: { url: 'https://script.example/exec', token: 'tok', fetch, costs: true } };
+  return { grid, sheet, costsGrid, costsSheet, extraGrids, fetch, cfg: { url: 'https://script.example/exec', token: 'tok', fetch, costs: true } };
 }
 
 // Echte koppen van form_data
@@ -292,4 +293,24 @@ test('zonder App-id-kolom: rit vinden op Timestamp, alleen eigen cellen schrijve
   assert.equal(find(), -1);
   assert.equal(sheet.grid.length, len - 1);
   assert.equal((await store.unsynced(10)).length, 0);
+});
+
+test('beveiligde kolom in form_data: niets schrijven, melding noemt de kolom, regel blijft in de wachtrij', async () => {
+  const sheet = fakeAppsScript(SHEET_ROWS);
+  // kolom B (Date) beveiligd vanaf rij 2
+  sheet.sheet.getProtections = (type) => (type === 'RANGE' ? [{
+    canEdit: () => false, isWarningOnly: () => false,
+    getRange: () => ({ getRow: () => 2, getLastRow: () => 1000, getColumn: () => 2, getLastColumn: () => 2 }),
+  }] : []);
+  const store = memoryStore();
+  const before = JSON.stringify(sheet.grid);
+  const errors = [];
+  const orig = console.error; console.error = (...a) => errors.push(a.join(' '));
+  try {
+    await handle(req('POST', '/api/entries', { puts: [{ id: 'p1', type: 'rit', date: '2026-11-22', t: Date.UTC(2026, 10, 22, 9), hh: 'Klein', km: 5, upd: 10 }] }),
+      { code: 'c', store: () => store, sheet: sheet.cfg });
+  } finally { console.error = orig; }
+  assert.equal(JSON.stringify(sheet.grid), before);
+  assert.ok(errors.some((e) => /Beveiligd in form_data rij \d+: kolom B/.test(e)), errors.join('\n'));
+  assert.equal((await store.unsynced(10)).length, 1);
 });

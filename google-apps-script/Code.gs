@@ -32,11 +32,13 @@ function doPost(e) {
     };
     const results = (body.ops || []).map(function (op) {
       try {
-        if (op.op === 'delete') return remove_(ridesSheet, op);
-        if (op.entry && op.entry.type === 'kost') return upsertCost_(op.entry);
-        if (op.entry && op.entry.type === 'betaling') return upsertPayment_(op.entry);
-        const r = ridesSheet();
-        return upsert_(r.sheet, r.cols, op.entry);
+        var out;
+        if (op.op === 'delete') out = remove_(ridesSheet, op);
+        else if (op.entry && op.entry.type === 'kost') out = upsertCost_(op.entry);
+        else if (op.entry && op.entry.type === 'betaling') out = upsertPayment_(op.entry);
+        else { const r = ridesSheet(); out = upsert_(r.sheet, r.cols, op.entry); }
+        SpreadsheetApp.flush();      // schrijffouten nu, bij deze regel (niet pas bij de volgende)
+        return out;
       }
       catch (err) {
         // Met regelnummer/functie, zodat de fout in de Vercel-logs direct aan te wijzen is.
@@ -161,7 +163,7 @@ function upsert_(sheet, cols, e) {
   const set = function (c, v) { if (c) vals[c] = v; };
   // Met App-id: Timestamp = moment van wegschrijven. Zonder: de vaste sleutel-tijd van de regel.
   if (isNew || !cols.id) set(cols.ts, cols.id ? new Date() : new Date(keyTime_(e)));
-  set(cols.date, new Date(p[0], p[1] - 1, p[2]));
+  set(cols.date, new Date(p[0], p[1] - 1, p[2], 12));
   set(cols.hh, e.hh);
   set(cols.bij, e.type === 'rit' ? (e.bij || '') : '');
   set(cols.km, e.type === 'rit' ? e.km : '');
@@ -170,6 +172,7 @@ function upsert_(sheet, cols, e) {
   set(cols.cost, e.type === 'tank' ? e.cost : '');
   set(cols.lp, e.type === 'tank' && e.lp != null ? e.lp : '');
   set(cols.id, e.id);
+  assertEditable_(sheet, row, Object.keys(vals).map(Number));
   // Cel voor cel: andere (formule- of beveiligde) kolommen van de rij blijven onaangeroerd.
   Object.keys(vals).forEach(function (c) { sheet.getRange(row, Number(c)).setValue(vals[c]); });
   return { id: e.id, ok: true, row: row };
@@ -252,15 +255,17 @@ function upsertCost_(e) {
   const isNew = !row;
   if (isNew) row = lastCostRow_(sheet, cols) + 1;
   const p = e.date.split('-').map(Number);
+  assertEditable_(sheet, row, [cols.cost, cols.desc, cols.date, cols.hh, cols.id]);
   if (cols.cost) sheet.getRange(row, cols.cost).setValue(e.cost);
   if (cols.desc) sheet.getRange(row, cols.desc).setValue(e.desc || '');
-  if (cols.date) sheet.getRange(row, cols.date).setValue(new Date(p[0], p[1] - 1, p[2]));
+  if (cols.date) sheet.getRange(row, cols.date).setValue(new Date(p[0], p[1] - 1, p[2], 12));
   if (cols.hh) sheet.getRange(row, cols.hh).setValue(e.hh);
   sheet.getRange(row, cols.id).setValue(e.id);
+  SpreadsheetApp.flush();             // waarden eerst: een fout daarin mag niet in tryFormat_ verdwijnen
   if (isNew && row > 2) {
     // Opmaak (€, datum) van de regel erboven overnemen
     [cols.cost, cols.date].forEach(function (c) {
-      if (c) sheet.getRange(row, c).setNumberFormat(sheet.getRange(row - 1, c).getNumberFormat());
+      if (c) tryFormat_(sheet.getRange(row, c), sheet.getRange(row - 1, c).getNumberFormat());
     });
   }
   return { id: e.id, ok: true, row: row };
@@ -288,12 +293,44 @@ function upsertPayment_(e) {
   if (!row) row = sheet.getLastRow() + 1;
   const p = e.date.split('-').map(Number);
   const to = e.hh === 'Klein' ? 'Groot' : 'Klein';
+  assertEditable_(sheet, row, [1, 2, 3, 4, 5, 6, 7]);
   sheet.getRange(row, 1, 1, PAYMENTS_HEADER.length).setValues([[
-    new Date(p[0], p[1] - 1, p[2]), e.hh, to, e.amount, e.note || '', e.ok ? '✓' : '', e.id,
+    new Date(p[0], p[1] - 1, p[2], 12), e.hh, to, e.amount, e.note || '', e.ok ? '✓' : '', e.id,
   ]]);
-  sheet.getRange(row, 1).setNumberFormat('dd-mm-yyyy');
-  sheet.getRange(row, 4).setNumberFormat('"€"#,##0.00');
+  SpreadsheetApp.flush();
+  tryFormat_(sheet.getRange(row, 1), 'dd-mm-yyyy');
+  tryFormat_(sheet.getRange(row, 4), '"€"#,##0.00');
   return { id: e.id, ok: true, row: row };
+}
+
+/** Getalnotatie zetten; in een tabel met getypte kolommen mag dat niet en slaan we het over. */
+function tryFormat_(range, format) {
+  try { range.setNumberFormat(format); SpreadsheetApp.flush(); } catch (err) { /* getypte kolom */ }
+}
+
+const colName_ = function (c) { return c <= 26 ? String.fromCharCode(64 + c) : 'kolom ' + c; };
+
+/** Welke van deze kolommen in deze rij zijn beveiligd voor ons? Vooraf checken, zodat we geen halve rij schrijven. */
+function blockedCols_(sheet, row, colNums) {
+  if (!sheet.getProtections) return [];
+  const blocked = {};
+  const inside = function (r, c) { return row >= r.getRow() && row <= r.getLastRow() && c >= r.getColumn() && c <= r.getLastColumn(); };
+  sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(function (p) {
+    if (p.canEdit() || p.isWarningOnly()) return;
+    const r = p.getRange();
+    colNums.forEach(function (c) { if (inside(r, c)) blocked[c] = true; });
+  });
+  sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function (p) {
+    if (p.canEdit() || p.isWarningOnly()) return;
+    const free = p.getUnprotectedRanges();
+    colNums.forEach(function (c) { if (!free.some(function (r) { return inside(r, c); })) blocked[c] = true; });
+  });
+  return Object.keys(blocked).map(Number);
+}
+
+function assertEditable_(sheet, row, colNums) {
+  const bad = blockedCols_(sheet, row, colNums.filter(Boolean));
+  if (bad.length) throw new Error('Beveiligd in ' + sheet.getName() + ' rij ' + row + ': kolom ' + bad.map(colName_).join(', ') + ' — er is niets geschreven');
 }
 
 function json_(obj) {
