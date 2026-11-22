@@ -1,5 +1,5 @@
 import {
-  HOUSEHOLDS, trackStep, computeRides, mergeRides, counterBefore, totals, excelText, parseNum, newId,
+  HOUSEHOLDS, trackStep, computeRides, mergeRides, mergeSheetList, counterBefore, totals, excelText, parseNum, newId,
   costInsights, categoryOf, toRD, fromRD, PARK_ID, parkingOf,
 } from './core.js';
 import { car, duo, logo } from './art.js';
@@ -543,16 +543,7 @@ async function loadCosts(force = false) {
  * Staat een app-regel wel in de sheet (zelfde App-id), dan geldt de sheet — behalve direct na een eigen wijziging
  * die nog onderweg is.
  */
-function fromSheet(sheetList, type) {
-  const appRows = all().filter((e) => e.type === type), byId = new Map(appRows.map((e) => [e.id, e]));
-  const inSheet = new Set(sheetList.map((r) => r.id));
-  const merged = sheetList.map((r) => {
-    const mine = byId.get(r.id);
-    return mine && mine.upd > costsLoadedAt ? { ...mine, pending: true } : { ...r, editable: !!mine };
-  });
-  for (const e of appRows) if (!inSheet.has(e.id)) merged.push({ ...e, pending: true, editable: true });
-  return merged;
-}
+const fromSheet = (sheetList, type) => mergeSheetList(sheetList, all().filter((e) => e.type === type), { loadedAt: costsLoadedAt });
 const allCosts = () => fromSheet(sheetCosts, 'kost');
 const allPayments = () => fromSheet(sheetPayments, 'betaling');
 const eur0 = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });

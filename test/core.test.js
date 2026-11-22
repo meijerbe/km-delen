@@ -126,3 +126,19 @@ test('mergeRides: sheet is de bron; database alleen voor wat nog niet in de shee
   // sheet nog nooit gelezen: database zoals hij is
   assert.equal(mergeRides(db, null, now), db);
 });
+
+import { mergeSheetList } from '../public/core.js';
+
+test('mergeSheetList: in de sheet verwijderde betaling verdwijnt ook uit de app', () => {
+  const now = Date.UTC(2026, 10, 22, 12);
+  const sheet = [{ id: 'b1', type: 'betaling', amount: 500, src: 'sheet', app: true }];
+  const app = [
+    { id: 'b1', type: 'betaling', amount: 500, synced: true, upd: now - 3600e3 },     // staat in sheet
+    { id: 'b2', type: 'betaling', amount: 0.1, synced: true, upd: now - 3600e3 },     // in de sheet verwijderd
+    { id: 'b3', type: 'betaling', amount: 20, upd: now - 60e3 },                      // nog niet in de sheet
+    { id: 'b4', type: 'betaling', amount: 5, synced: true, upd: now - 30e3 },         // net verstuurd, sheet loopt achter
+  ];
+  const m = mergeSheetList(sheet, app, { loadedAt: now - 10e3, now });
+  assert.deepEqual(m.map((x) => [x.id, !!x.pending]), [['b1', false], ['b3', true], ['b4', true]]);
+  assert.equal(m[0].editable, true);
+});

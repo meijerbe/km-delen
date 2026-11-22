@@ -246,3 +246,22 @@ export function mergeRides(db, sheetRides, now = Date.now()) {
   });
   return [...sheetRides, ...keep];
 }
+
+/**
+ * Kosten of betalingen: de sheet is de bron. Een app-regel met dezelfde App-id volgt de sheet (behalve een eigen
+ * wijziging die nog onderweg is). Een app-regel die niet (meer) in de sheet staat: tonen als hij er nog niet in kwam,
+ * of net is verstuurd (sheet-uitlezing loopt achter). Al eerder in de sheet gezet en nu weg = in de sheet verwijderd.
+ */
+export function mergeSheetList(sheetList, appRows, { loadedAt = 0, now = Date.now() } = {}) {
+  const byId = new Map(appRows.map((e) => [e.id, e])), inSheet = new Set(sheetList.map((r) => r.id));
+  const merged = sheetList.map((r) => {
+    const mine = byId.get(r.id);
+    return mine && mine.upd > loadedAt ? { ...mine, pending: true } : { ...r, editable: !!mine };
+  });
+  for (const e of appRows) {
+    if (inSheet.has(e.id)) continue;
+    if (e.synced && now - (e.upd || 0) >= RECENT_MS) continue;
+    merged.push({ ...e, pending: true, editable: true });
+  }
+  return merged;
+}
