@@ -74,10 +74,10 @@ test('rit met GPS, achteraf met kilometerstand, tanken, export en delen tussen t
 
   // Export voor Excel
   await tab(a, 'overzicht');
-  await expect(a.locator('#overview .item')).toHaveCount(4);
+  await expect(a.locator('#overview .item:not([data-id^="sfixture"])')).toHaveCount(4);
   await a.click('#btnCopyAll');
   const clip = await a.evaluate(() => navigator.clipboard.readText());
-  const rows = clip.split('\n').map((r) => r.split('\t'));
+  const rows = clip.split('\n').map((r) => r.split('\t')).filter((r) => r[0] !== '2020-01-05');   // rit uit de sheet-fixture
   expect(rows[0]).toEqual(['Date', 'Bestuurder', 'Bijrijders', 'Aantal kilometers', 'Kosten Tanken', 'Literprijs', 'Kilometerstand']);
   expect(rows[1]).toEqual(['2026-11-01', 'Klein', '', '20', '', '', '10000']);
   expect(rows.slice(2).map((r) => r.slice(1, 4))).toEqual(expect.arrayContaining([
@@ -92,17 +92,17 @@ test('rit met GPS, achteraf met kilometerstand, tanken, export en delen tussen t
   await login(b);
   await expect(b.locator('#gate')).toBeHidden();
   await tab(b, 'overzicht');
-  await expect(b.locator('#overview .item')).toHaveCount(4);
+  await expect(b.locator('#overview .item:not([data-id^="sfixture"])')).toHaveCount(4);
   await b.locator('#overview .item', { hasText: '⛽' }).click();
   await b.click('#shDelete');
   await b.click('#cfYes');
-  await expect(b.locator('#overview .item')).toHaveCount(3);
+  await expect(b.locator('#overview .item:not([data-id^="sfixture"])')).toHaveCount(3);
   await expect(b.locator('#syncTxt')).toHaveText('Gedeeld');
 
   await a.click('#btnGear');
   await a.click('#btnSyncNow');
   await tab(a, 'overzicht');
-  await expect(a.locator('#overview .item')).toHaveCount(3);
+  await expect(a.locator('#overview .item:not([data-id^="sfixture"])')).toHaveCount(3);
 
   // Vergeten rit achteraf (Groot, 30 km, gisteren-ish vóór de stand-rit) → Klein-rit wordt 48 km
   await tab(a, 'rit');
@@ -308,4 +308,15 @@ test('overzicht: link naar de spreadsheet, over de app en versiegeschiedenis', a
   await expect(page.locator('#about')).toContainText('Over Disco Polo');
   await page.click('#about summary');
   await expect(page.locator('#about')).toContainText('Betalingen tussen de stellen');
+});
+
+test('ritten uit de spreadsheet: zichtbaar, maar aanpassen gaat via de sheet', async ({ page }) => {
+  await login(page);
+  await expect(page.locator('#gate')).toBeHidden();
+  await tab(page, 'overzicht');
+  const row = page.locator('#overview .item[data-id="sfixture00001r"]');
+  await expect(row).toContainText('3 km');
+  await row.click();
+  await expect(page.locator('#toast')).toContainText('aanpassen of verwijderen doe je daar');
+  await expect(page.locator('#sheetBg')).not.toHaveClass(/on/);
 });

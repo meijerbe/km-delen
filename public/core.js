@@ -227,3 +227,22 @@ export function fromRD(x, y) {
 /** Laatste parkeerplek (type 'park'; de nieuwste telt). */
 export const PARK_ID = 'parkeerplek';
 export const parkingOf = (entries) => entries.find((e) => e.id === PARK_ID && e.type === 'park') || null;
+
+
+/**
+ * De sheet is de bron voor ritten en tankbeurten. Uit de database tonen we alleen wat (nog) niet in de sheet staat:
+ * niet-gesynchroniseerde regels, en net-gesynchroniseerde regels die de sheet-uitlezing (cache) nog niet heeft.
+ * sheetRides === null: sheet nog nooit gelezen → val terug op de database.
+ */
+export const RECENT_MS = 15 * 60 * 1000;
+export const rideSig = (e) => [e.type, e.date, e.hh, e.type === 'rit' ? e.km : e.cost].join('|');
+export function mergeRides(db, sheetRides, now = Date.now()) {
+  if (!Array.isArray(sheetRides)) return db;
+  const inSheet = new Set(sheetRides.map(rideSig));
+  const keep = db.filter((e) => {
+    if (e.type !== 'rit' && e.type !== 'tank') return true;
+    if (!e.synced) return true;
+    return now - (e.upd || 0) < RECENT_MS && !inSheet.has(rideSig(e));
+  });
+  return [...sheetRides, ...keep];
+}

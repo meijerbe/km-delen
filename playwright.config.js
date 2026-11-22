@@ -23,7 +23,7 @@ export default defineConfig({
   webServer: {
     command: 'node scripts/dev-server.js',
     url: `http://localhost:${port}`,
-    env: { PORT: String(port), GROUP_CODE: 'test', COSTS_FIXTURE: 'e2e/fixtures/costs.json', SPREADSHEET_ID: 'testsheet_abcdefghijklmnopqrstuvwxyz' },
+    env: { PORT: String(port), GROUP_CODE: 'test', COSTS_FIXTURE: 'e2e/fixtures/costs.json', SPREADSHEET_ID: 'testsheet_abcdefghijklmnopqrstuvwxyz', RIDES_FIXTURE: 'e2e/fixtures/rides.json' },
     reuseExistingServer: !process.env.CI,
   },
 });

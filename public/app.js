@@ -1,5 +1,5 @@
 import {
-  HOUSEHOLDS, trackStep, computeRides, counterBefore, totals, excelText, parseNum, newId,
+  HOUSEHOLDS, trackStep, computeRides, mergeRides, counterBefore, totals, excelText, parseNum, newId,
   costInsights, categoryOf, toRD, fromRD, PARK_ID, parkingOf,
 } from './core.js';
 import { car, duo, logo } from './art.js';
@@ -9,7 +9,7 @@ import { startLine, stopLine, tankLine, compareLine, honk, jingle } from './fun.
 // ================= opslag op het toestel =================
 const KEY = {
   entries: 'kmdelen.v3.entries', outbox: 'kmdelen.v3.outbox', code: 'kmdelen.v3.code',
-  settings: 'kmdelen.v3.settings', active: 'kmdelen.v3.active', costs: 'kmdelen.v3.sheetcosts', sheetUrl: 'kmdelen.v3.sheeturl', payments: 'kmdelen.v3.sheetpayments',
+  settings: 'kmdelen.v3.settings', active: 'kmdelen.v3.active', costs: 'kmdelen.v3.sheetcosts', sheetUrl: 'kmdelen.v3.sheeturl', rides: 'kmdelen.v3.sheetrides', payments: 'kmdelen.v3.sheetpayments',
 };
 const mem = {};
 const local = {
@@ -24,8 +24,12 @@ let code = local.get(KEY.code, '');
 let settings = { lastHH: 'Klein', mode: 'km', ...local.get(KEY.settings, {}) };
 let active = local.get(KEY.active, null);
 
-const all = () => [...entries.values()];
-const persist = () => { local.set(KEY.entries, all()); local.set(KEY.outbox, outbox); };
+let sheetRides = local.get(KEY.rides, null);       // ritten/tankbeurten uit form_data (de bron); null = nog niet gelezen
+const dbAll = () => [...entries.values()];
+const all = () => mergeRides(dbAll(), sheetRides);
+/** Staat deze regel al in de sheet? Dan pas je hem daar aan, niet in de app. */
+const inSheet = (id) => { const e = entries.get(id); return !e || !!e.synced; };
+const persist = () => { local.set(KEY.entries, dbAll()); local.set(KEY.outbox, outbox); };
 const saveSettings = () => local.set(KEY.settings, settings);
 const saveActive = () => (active ? local.set(KEY.active, active) : local.del(KEY.active));
 
@@ -146,7 +150,7 @@ function sync() {
       if (err instanceof AuthError) { code = ''; local.del(KEY.code); showGate('De groepscode klopt niet (meer).'); setSync('error', err.message); }
       else if (err instanceof TypeError) setSync('offline');           // netwerk weg
       else setSync('error', err.message);
-    } finally { syncing = null; render(); }
+    } finally { syncing = null; render(); loadCosts(); }
   })();
   return syncing;
 }
@@ -383,6 +387,7 @@ $('shDelete').onclick = async () => {
   const id = sheet.id; closeSheet(); deleteEntry(id); toast('Verwijderd');
 };
 function editEntry(id) {
+  if (sheetRides && inSheet(id)) return toast('Deze staat al in de spreadsheet — aanpassen of verwijderen doe je daar');
   const e = entries.get(id); if (!e) return;
   const sub = e.type !== 'rit' ? '' : e.src === 'gps' ? `Gemeten met GPS${e.dur ? `, ${fmtDur(e.dur)}` : ''}` : 'Handmatig ingevoerd';
   openSheet({ ...e, mode: 'edit', sub });
@@ -415,6 +420,7 @@ function itemHTML(e, kmInfo) {
   if (ride && e.stand != null) parts.push(`stand ${nf0.format(e.stand)}`);
   if (ride && e.src === 'gps') parts.push('GPS');
   if (!ride && e.lp) parts.push(`${eur.format(e.lp)}/l · ${nf1.format(e.cost / e.lp)} l`);
+  if (sheetRides && !e.sheet && !inSheet(e.id)) parts.push('nog niet in de sheet');
   return `<div class="item" data-id="${esc(e.id)}">
     ${duo(e.hh, 28)}
     <div class="info"><div>${ride ? '' : '⛽ '}${dayLabel(e.date)} <span class="muted small">· ${e.hh}</span></div>${parts.length ? `<div class="muted small">${parts.join(' · ')}</div>` : ''}</div>
@@ -527,9 +533,10 @@ async function loadCosts(force = false) {
     sheetCosts = data.costs || []; local.set(KEY.costs, sheetCosts);
     sheetPayments = data.payments || []; local.set(KEY.payments, sheetPayments);
     if (data.sheetUrl !== undefined) { sheetUrl = data.sheetUrl; local.set(KEY.sheetUrl, sheetUrl); renderAbout(); }
+    if (Array.isArray(data.rides)) { sheetRides = data.rides; local.set(KEY.rides, sheetRides); }
     costsError = ''; costsLoadedAt = Date.now();
   } catch (err) { costsError = err instanceof TypeError ? 'Offline: laatst bekende kosten' : err.message; }
-  renderCosts();
+  render();
 }
 /**
  * De sheet is de bron. Regels uit de app die (nog) niet in de sheet staan, tellen mee als "nog niet in de sheet".
@@ -737,22 +744,9 @@ $('btnCancel').onclick = async () => {
 };
 $('btnSwitch').onclick = () => { if (!active) return; active.hh = active.hh === 'Klein' ? 'Groot' : 'Klein'; saveActive(); renderActive(); };
 $('btnManual').onclick = () => openSheet({ mode: 'manual', type: 'rit', hh: pickHH, date: today(), bij: '' });
-$('btnCopyAll').onclick = () => (entries.size ? copyText(excelText(all(), null, true), 'Gekopieerd — plak in cel A1 van een leeg blad') : toast('Nog niets ingevoerd'));
+$('btnCopyAll').onclick = () => (all().length ? copyText(excelText(all(), null, true), 'Gekopieerd — plak in cel A1 van een leeg blad') : toast('Nog niets ingevoerd'));
 $('btnSyncNow').onclick = () => sync().then(() => syncState === 'ok' && toast('Bijgewerkt'));
 $('btnLogout').onclick = () => showGate();
-$('btnSheetImport').onclick = async () => {
-  const b = $('btnSheetImport'); b.disabled = true; b.textContent = 'Bezig met ophalen…';
-  try {
-    const res = await fetch('/api/sheet-import', { method: 'POST', headers: { 'x-groep': code } });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Fout (${res.status})`);
-    await sync();
-    const msg = data.added ? `${data.added} regel(s) uit de spreadsheet toegevoegd` : 'Niets nieuws in de spreadsheet';
-    toast(data.unknownUsers?.length ? `${msg}. Overgeslagen (onbekende gebruiker): ${data.unknownUsers.join(', ')}` : msg);
-  } catch (err) {
-    toast(err instanceof TypeError ? 'Geen verbinding' : err.message);
-  } finally { b.disabled = false; b.textContent = 'Formulier-invoer ophalen'; }
-};
 // ================= Polo-diorama & parkeerplek =================
 let diorama = null, dioramaLoading = null;
 const ago = (ms) => {

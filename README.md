@@ -36,6 +36,10 @@ De spreadsheet is van een werkaccount dat geen web-apps mag publiceren, dus het 
 
 Het script voegt in `form_data` een kolom **App-id** toe; daarmee worden wijzigingen en verwijderingen in de app ook in de sheet doorgevoerd. Lukt het schrijven naar de sheet even niet, dan gaat het mee met de volgende wijziging of de health-check.
 
+### De spreadsheet is de bron
+
+Ritten en tankbeurten leest de app rechtstreeks uit *form_data* (via `/api/costs`, gviz). Uit de database toont de app alleen wat nog niet in de sheet staat; die regels kun je in de app nog aanpassen of verwijderen. Staat iets eenmaal in de sheet, dan pas je het daar aan. Het script schrijft alleen in de eigen kolommen (Timestamp, Date, km, stand, bijrijders, getankt, kosten, literprijs, gebruiker), slaat beveiligde bijzaak-kolommen over en gebruikt Timestamp als sleutel zodat een herhaalde poging geen dubbele regel maakt.
+
 ### Polo-diorama
 
 Het tabblad **📍 Polo** toont de buurt rond Bergselaan × Bergpolderstraat (500 × 500 m) als speelgoedblok met een ondergrond van 10 m (straat, klei, veen, zand), met de geparkeerde Polo erop.

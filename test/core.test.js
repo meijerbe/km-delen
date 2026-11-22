@@ -102,3 +102,27 @@ test('vaste km (uit de sheet) worden niet afgeleid, maar zetten wel de teller', 
   assert.equal(km.get('c').km, 10);
   assert.equal(counter, 45240);
 });
+
+import { mergeRides, rideSig } from '../public/core.js';
+
+test('mergeRides: sheet is de bron; database alleen voor wat nog niet in de sheet staat', () => {
+  const now = Date.UTC(2026, 10, 22, 12);
+  const sheet = [
+    { id: 's1r', type: 'rit', date: '2026-11-20', hh: 'Klein', km: 40, sheet: true },
+    { id: 's2t', type: 'tank', date: '2026-11-21', hh: 'Groot', cost: 60, sheet: true },
+  ];
+  const db = [
+    { id: 's1r', type: 'rit', date: '2026-11-20', hh: 'Klein', km: 40, synced: true, upd: now - 3600e3 },   // ingelezen, staat in sheet
+    { id: 'a1', type: 'rit', date: '2026-11-22', hh: 'Groot', km: 12, upd: now - 60e3 },                      // nog niet in sheet
+    { id: 'a2', type: 'rit', date: '2026-11-22', hh: 'Klein', km: 7, synced: true, upd: now - 60e3 },        // net gesynct, sheet-cache loopt achter
+    { id: 'a3', type: 'rit', date: '2026-11-19', hh: 'Klein', km: 9, synced: true, upd: now - 7200e3 },      // in sheet verwijderd/aangepast
+    { id: 'k1', type: 'kost', date: '2026-11-22', hh: 'Klein', cost: 5 },                                    // geen rit: blijft
+  ];
+  const ids = mergeRides(db, sheet, now).map((e) => e.id).sort();
+  assert.deepEqual(ids, ['a1', 'a2', 'k1', 's1r', 's2t']);
+  // zodra de sheet de net-gesyncte rit kent: niet dubbel
+  const withA2 = [...sheet, { id: 'sxr', type: 'rit', date: '2026-11-22', hh: 'Klein', km: 7, sheet: true }];
+  assert.deepEqual(mergeRides(db, withA2, now).filter((e) => rideSig(e) === rideSig(db[2])).length, 1);
+  // sheet nog nooit gelezen: database zoals hij is
+  assert.equal(mergeRides(db, null, now), db);
+});

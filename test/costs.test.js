@@ -94,7 +94,7 @@ test('/api/costs: code verplicht, en fout van Google netjes doorgeven', async ()
   const req = (code) => new Request('http://x/api/costs', { headers: { 'x-groep': code } });
   assert.equal((await handleCosts(req('fout'), { code: 'c' })).status, 401);
   const ok = await handleCosts(req('c'), { code: 'c', sheet: { costs: true }, sheetCosts: async () => [{ id: 'k1' }], sheetPayments: async () => [{ id: 'b1' }] });
-  assert.deepEqual(await ok.json(), { costs: [{ id: 'k1' }], payments: [{ id: 'b1' }], costsSync: true, sheetUrl: null });
+  assert.deepEqual(await ok.json(), { costs: [{ id: 'k1' }], payments: [{ id: 'b1' }], rides: null, costsSync: true, sheetUrl: null });
   const bad = await handleCosts(req('c'), { code: 'c', sheetCosts: async () => { throw new Error('403'); } });
   assert.equal(bad.status, 502);
 });
@@ -153,4 +153,19 @@ test('betaling valideren', () => {
   const b = { id: 'b1', type: 'betaling', date: '2026-11-12', t: 1, hh: 'Groot', amount: 500.004, note: ' Tikkie ', ok: true, upd: 3 };
   assert.deepEqual(cleanEntry(b), { id: 'b1', type: 'betaling', date: '2026-11-12', hh: 'Groot', t: 1, upd: 3, amount: 500, note: 'Tikkie', ok: true });
   assert.equal(cleanEntry({ ...b, amount: 0 }), null);
+});
+
+import { parseRidesTable } from '../lib/costs.js';
+
+test('ritten uit form_data via gviz', () => {
+  const labels = ['Timestamp', '', 'Date', 'Aantal kilometers', 'Eind kilometerstand', '', '', 'Bijrijders', 'Getankt?', 'Kosten tanken', 'Literprijs', '', 'Rate the trip', 'Gebruiker', 'Rating'];
+  const row = (vals) => ({ c: vals.map((v) => (v === null ? null : { v })) });
+  const t = { cols: labels.map((label) => ({ label })), rows: [
+    row(['Date(2026,10,21,5,7,15)', null, 'Date(2026,10,21)', 48, 45300, null, null, '', 'No', null, null, null, null, 'Klein', null]),
+    row(['Date(2026,10,14,4,40,31)', null, 'Date(2026,10,14)', 0, null, null, null, '', 'Yes', 59.69, 1.99, null, null, 'Klein', null]),
+  ] };
+  const r = parseRidesTable(t);
+  assert.equal(r.length, 2);
+  assert.deepEqual([r[0].type, r[0].date, r[0].km, r[0].stand, r[0].hh, r[0].sheet], ['rit', '2026-11-21', 48, 45300, 'Klein', true]);
+  assert.deepEqual([r[1].type, r[1].date, r[1].cost, r[1].lp], ['tank', '2026-11-14', 59.69, 1.99]);
 });
