@@ -33,7 +33,11 @@ function doPost(e) {
         if (op.entry && op.entry.type === 'betaling') return upsertPayment_(op.entry);
         return upsert_(sheet, cols, op.entry);
       }
-      catch (err) { return { id: op.id || (op.entry && op.entry.id), ok: false, error: String(err) }; }
+      catch (err) {
+        // Met regelnummer/functie, zodat de fout in de Vercel-logs direct aan te wijzen is.
+        const where = err && err.stack ? ' @ ' + String(err.stack).split('\n').slice(0, 3).join(' | ') : '';
+        return { id: op.id || (op.entry && op.entry.id), ok: false, error: String(err) + where };
+      }
     });
     return json_({ ok: true, results: results });
   } finally {
