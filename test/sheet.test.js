@@ -14,6 +14,7 @@ function makeSheet(grid, name = 'tab') {
     getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => grid[row - 1 + i]?.[col - 1 + j] ?? '')),
     setValues: (vals) => vals.forEach((r, i) => r.forEach((v, j) => { (grid[row - 1 + i] ||= [])[col - 1 + j] = v; })),
     setValue: (v) => { (grid[row - 1] ||= [])[col - 1] = v; },
+    getValue: () => grid[row - 1]?.[col - 1] ?? '',
     getNumberFormat: () => formats[`${row},${col}`] || 'General',
     setNumberFormat: (f) => { formats[`${row},${col}`] = f; },
   });
@@ -66,13 +67,15 @@ function fakeAppsScript(initial, costsInitial = [['Kosten', 'Beschrijving', 'Dat
 
 // Echte koppen van form_data
 const HEADER = ['Timestamp', 'Date', 'Aantal kilometers', 'Eind kilometerstand', 'Bijrijders', 'Getankt?', 'Kosten tanken', 'Literprijs', 'Rate the trip', 'Gebruiker', 'Rating'];
-const ID = 11;   // App-id komt in de 12e kolom
+const ID = 11;   // App-id in de 12e kolom (als die er is)
 const SHEET_ROWS = [
   HEADER,
   [new Date(2026, 3, 19, 10), new Date(2026, 3, 19), 207, 45207, '', 'Ja', 78.46, 2.25, '', 'Groot', 4],
   [new Date(2026, 3, 21, 9), new Date(2026, 3, 21), 12, 45219, '', 'Nee', '', '', '', 'Groot', ''],
   [new Date(2026, 3, 22, 9), new Date(2026, 3, 22), 7, 45226, 'Groot', 'Nee', '', '', '', 'klein', 5],
 ];
+const ID_ROWS = [[...HEADER, 'App-id'], ...SHEET_ROWS.slice(1)];
+
 
 const rit = (over = {}) => ({ id: 'r1', type: 'rit', date: '2026-11-21', t: 1, hh: 'Klein', km: 12, upd: 100, ...over });
 const req = (method, path, body) => new Request(`http://x${path}`, {
@@ -104,7 +107,7 @@ test('parseSheet: rit + tankbeurt splitsen, app-regels en onleesbare regels over
 
 // ---------- Apps Script + server samen ----------
 test('app-regels komen in form_data, bijwerken en verwijderen via App-id', async () => {
-  const sheet = fakeAppsScript(SHEET_ROWS);
+  const sheet = fakeAppsScript(ID_ROWS);
   const store = memoryStore();
   const ctx = { code: 'c', store: () => store, sheet: sheet.cfg };
 
@@ -112,10 +115,10 @@ test('app-regels komen in form_data, bijwerken en verwijderen via App-id', async
   assert.equal(sheet.grid[0][ID], 'App-id');
   const row = (id) => sheet.grid.find((r) => r[ID] === id);
   // Timestamp, Date, km, stand, bijrijders, getankt, kosten, literprijs, rate, gebruiker, rating
-  assert.deepEqual(row('r1').slice(1, 11).map((v) => (v instanceof Date ? v.toDateString() : v)),
+  assert.deepEqual(Array.from(row('r1').slice(1, 11), (v) => (v instanceof Date ? v.toDateString() : v ?? '')),
     [new Date(2026, 10, 21).toDateString(), 12, '', 'Groot', 'Nee', '', '', '', 'Klein', '']);
   assert.ok(row('r1')[0] instanceof Date);
-  assert.deepEqual(row('t1').slice(2, 10), ['', '', '', 'Ja', 80.5, 2.3, '', 'Groot']);
+  assert.deepEqual(Array.from(row('t1').slice(2, 10), (v) => v ?? ''), ['', '', '', 'Ja', 80.5, 2.3, '', 'Groot']);
   assert.deepEqual(await store.unsynced(10), []);
 
   await handle(req('POST', '/api/entries', { puts: [rit({ km: 15, upd: 200 })] }), ctx);
@@ -128,7 +131,7 @@ test('app-regels komen in form_data, bijwerken en verwijderen via App-id', async
 });
 
 test('sheet onbereikbaar: opslaan lukt, health stuurt het later alsnog', async () => {
-  const sheet = fakeAppsScript(SHEET_ROWS);
+  const sheet = fakeAppsScript(ID_ROWS);
   const store = memoryStore();
   const down = { ...sheet.cfg, fetch: async () => { throw new TypeError('fetch failed'); } };
   const res = await handle(req('POST', '/api/entries', { puts: [rit()] }), { code: 'c', store: () => store, sheet: down });
@@ -186,7 +189,7 @@ test('pushToSheet zonder koppeling doet niets', async () => {
 });
 
 test('ingelezen ritten met stand houden hun km; de volgende app-rit rekent vanaf de laatste stand', async () => {
-  const sheet = fakeAppsScript(SHEET_ROWS);
+  const sheet = fakeAppsScript(ID_ROWS);
   const store = memoryStore();
   const ctx = { code: 'c', store: () => store, sheet: sheet.cfg };
   await handleImport(req('POST', '/api/sheet-import'), ctx);
@@ -258,5 +261,35 @@ test('betaling raakt form_data niet, ook als App-id daar ontbreekt en niet gesch
   await handle(req('POST', '/api/entries', { puts: [{ id: 'b9', type: 'betaling', date: '2026-11-22', t: 1, hh: 'Groot', amount: 0.1, upd: 5 }] }), ctx);
   assert.equal(JSON.stringify(sheet.grid), before);                       // form_data onaangeroerd
   assert.deepEqual(sheet.extraGrids.Verrekeningen[1].slice(1), ['Groot', 'Klein', 0.1, '', '', 'b9']);
+  assert.equal((await store.unsynced(10)).length, 0);
+});
+
+test('zonder App-id-kolom: rit vinden op Timestamp, alleen eigen cellen schrijven, verwijderen, niet dubbel inlezen', async () => {
+  const rows = SHEET_ROWS.map((r) => [...r, 'formule']);             // extra kolom die we niet mogen raken
+  rows[0][HEADER.length] = '';
+  const sheet = fakeAppsScript(rows);
+  const store = memoryStore();
+  const ctx = { code: 'c', store: () => store, sheet: sheet.cfg };
+  const t = Date.UTC(2026, 10, 22, 10, 0, 7, 456);
+  await handle(req('POST', '/api/entries', { puts: [{ id: 'a1', type: 'rit', date: '2026-11-22', t, hh: 'Klein', km: 12, upd: 100 }] }), ctx);
+  assert.equal(sheet.grid[0].length, HEADER.length + 1);              // geen kolom bijgekomen
+  const find = () => sheet.grid.findIndex((r) => r[0] instanceof Date && r[0].getTime() === Math.floor(t / 1000) * 1000);
+  let i = find();
+  assert.ok(i > 0);
+  assert.equal(sheet.grid[i][2], 12);
+  assert.equal(sheet.grid[i][HEADER.length], undefined);              // formulekolom niet overschreven
+  const len = sheet.grid.length;
+  await handle(req('POST', '/api/entries', { puts: [{ id: 'a1', type: 'rit', date: '2026-11-22', t, hh: 'Klein', km: 15, upd: 200 }] }), ctx);
+  i = find();
+  assert.equal(sheet.grid[i][2], 15);
+  assert.equal(sheet.grid.length, len);                               // bijgewerkt, niet erbij
+
+  const res = await handleImport(req('POST', '/api/sheet-import'), ctx);
+  assert.equal(res.status, 200);
+  assert.equal((await store.list()).filter((r) => !r.deleted && r.data.type === 'rit' && r.data.date === '2026-11-22').length, 1);
+
+  await handle(req('POST', '/api/entries', { dels: [{ id: 'a1', upd: 300 }] }), ctx);
+  assert.equal(find(), -1);
+  assert.equal(sheet.grid.length, len - 1);
   assert.equal((await store.unsynced(10)).length, 0);
 });

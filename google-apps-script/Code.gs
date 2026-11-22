@@ -32,7 +32,7 @@ function doPost(e) {
     };
     const results = (body.ops || []).map(function (op) {
       try {
-        if (op.op === 'delete') return remove_(ridesSheet, op.id);
+        if (op.op === 'delete') return remove_(ridesSheet, op);
         if (op.entry && op.entry.type === 'kost') return upsertCost_(op.entry);
         if (op.entry && op.entry.type === 'betaling') return upsertPayment_(op.entry);
         const r = ridesSheet();
@@ -102,8 +102,31 @@ function columns_(sheet) {
     lp: find(/literprijs/i),
     id: find(new RegExp('^' + ID_HEADER + '$', 'i')),
   };
-  if (!cols.id) cols.id = addIdColumn_(sheet);
+  // Geen App-id-kolom (form_data is beveiligd)? Dan is Timestamp de sleutel: zie keyTime_.
+  if (!cols.id && !cols.ts) throw new Error('form_data heeft geen kolom App-id of Timestamp om ritten terug te vinden');
   return cols;
+}
+
+/** Vaste, unieke tijd per app-regel (op de seconde): staat in Timestamp als er geen App-id-kolom is. */
+function keyTime_(e) {
+  return Math.floor(Number(e.t) / 1000) * 1000;
+}
+
+/** Rij met deze Timestamp (op de seconde) én dezelfde datum en bestuurder; 0 als die er niet is. */
+function findByTime_(sheet, cols, e) {
+  if (!cols.ts || !e || !(Number(e.t) > 0)) return 0;
+  const last = sheet.getLastRow();
+  if (last < 2) return 0;
+  const key = keyTime_(e) / 1000;
+  const ts = sheet.getRange(2, cols.ts, last - 1, 1).getValues();
+  for (var i = 0; i < ts.length; i++) {
+    const v = ts[i][0];
+    if (!(v instanceof Date) || Math.floor(v.getTime() / 1000) !== key) continue;
+    const row = i + 2;
+    if (e.hh && cols.hh && String(sheet.getRange(row, cols.hh).getValue()).trim().toLowerCase() !== String(e.hh).toLowerCase()) continue;
+    return row;
+  }
+  return 0;
 }
 
 /** Kolom App-id helemaal achteraan toevoegen; lukt dat niet (beveiligd), dan een duidelijke melding. */
@@ -128,27 +151,30 @@ function findRow_(sheet, cols, id) {
 
 function upsert_(sheet, cols, e) {
   if (!e || !e.id) throw new Error('geen id');
-  const width = Math.max(sheet.getLastColumn(), cols.id);
-  var row = findRow_(sheet, cols, e.id);
-  var values = row ? sheet.getRange(row, 1, 1, width).getValues()[0] : new Array(width).fill('');
-  const set = function (c, v) { if (c) values[c - 1] = v; };
+  var row = cols.id ? findRow_(sheet, cols, e.id) : 0;
+  if (!row) row = findByTime_(sheet, cols, e);
+  const isNew = !row;
+  if (isNew) row = sheet.getLastRow() + 1;
   const p = e.date.split('-').map(Number);
-  set(cols.ts, row && cols.ts ? values[cols.ts - 1] : new Date());
+  const yn = yesNo_(sheet, cols);
+  const vals = {};
+  const set = function (c, v) { if (c) vals[c] = v; };
+  // Met App-id: Timestamp = moment van wegschrijven. Zonder: de vaste sleutel-tijd van de regel.
+  if (isNew || !cols.id) set(cols.ts, cols.id ? new Date() : new Date(keyTime_(e)));
   set(cols.date, new Date(p[0], p[1] - 1, p[2]));
   set(cols.hh, e.hh);
   set(cols.bij, e.type === 'rit' ? (e.bij || '') : '');
   set(cols.km, e.type === 'rit' ? e.km : '');
   set(cols.stand, e.type === 'rit' && e.stand != null ? e.stand : '');
-  set(cols.getankt, e.type === 'tank' ? yesNo_(sheet, cols).yes : yesNo_(sheet, cols).no);
+  set(cols.getankt, e.type === 'tank' ? yn.yes : yn.no);
   set(cols.cost, e.type === 'tank' ? e.cost : '');
   set(cols.lp, e.type === 'tank' && e.lp != null ? e.lp : '');
   set(cols.id, e.id);
-  if (!row) row = sheet.getLastRow() + 1;
-  sheet.getRange(row, 1, 1, width).setValues([values]);
+  // Cel voor cel: andere (formule- of beveiligde) kolommen van de rij blijven onaangeroerd.
+  Object.keys(vals).forEach(function (c) { sheet.getRange(row, Number(c)).setValue(vals[c]); });
   return { id: e.id, ok: true, row: row };
 }
 
-/** Ja/nee zoals het formulier ze al gebruikt in de kolom "Getankt?". */
 function yesNo_(sheet, cols) {
   const out = { yes: 'Ja', no: 'Nee' };
   if (!cols.getankt || sheet.getLastRow() < 2) return out;
@@ -162,12 +188,22 @@ function yesNo_(sheet, cols) {
   return out;
 }
 
-function remove_(ridesSheet, id) {
+function remove_(ridesSheet, op) {
+  const id = op.id;
   var row = 0, ridesError = null;
   try {
     const r = ridesSheet();
-    row = findRow_(r.sheet, r.cols, id);
-    if (row) { r.sheet.deleteRow(row); return { id: id, ok: true, removed: true }; }
+    row = r.cols.id ? findRow_(r.sheet, r.cols, id) : 0;
+    if (!row && op.t && (!op.type || op.type === 'rit' || op.type === 'tank')) row = findByTime_(r.sheet, r.cols, op);
+    if (row) {
+      try { r.sheet.deleteRow(row); }
+      catch (err) {   // rij weghalen mag niet (beveiliging): dan alleen onze cellen leegmaken
+        ['ts', 'date', 'hh', 'bij', 'km', 'stand', 'getankt', 'cost', 'lp', 'id'].forEach(function (k) {
+          if (r.cols[k]) r.sheet.getRange(row, r.cols[k]).setValue('');
+        });
+      }
+      return { id: id, ok: true, removed: true };
+    }
   } catch (err) { ridesError = err; }           // form_data onbruikbaar: verderop zoeken (kosten, betalingen)
   const costs = book_().getSheetByName(COSTS_NAME);
   if (costs) {

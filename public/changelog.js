@@ -1,6 +1,6 @@
 // Versiegeschiedenis — nieuwste bovenaan. Bij elke wijziging een regel toevoegen en VERSION ophogen.
 export const CHANGES = [
-  { v: '1.8', date: '2026-11-22', items: ['Link naar de spreadsheet, over de app en deze versiegeschiedenis'] },
+  { v: '1.8', date: '2026-11-22', items: ['Link naar de spreadsheet, over de app en deze versiegeschiedenis', 'Ritten uit de app komen ook zonder App-id-kolom in de spreadsheet'] },
   { v: '1.7', date: '2026-11-22', items: ['Betalingen tussen de stellen invullen en als ontvangen bevestigen', 'Afrekening toont wat al betaald is', 'Kosten en betalingen gaan naar de spreadsheet (tabblad Verrekeningen)'] },
   { v: '1.6', date: '2026-11-21', items: ['Onze huizen als kasteeltjes, Bakker Ids en het broodkarretje in de buurt'] },
   { v: '1.5', date: '2026-11-21', items: ['Polo-tab: de buurt in 3D met de geparkeerde Polo', 'Parkeerplek vastleggen met GPS of aanwijzen op de kaart'] },
