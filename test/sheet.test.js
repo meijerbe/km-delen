@@ -331,3 +331,60 @@ test('beveiligde bijzaak-kolom (Literprijs): tankbeurt komt er toch in, zonder d
   assert.equal(row[7] ?? '', '');                                      // Literprijs overgeslagen
   assert.equal((await store.unsynced(10)).length, 0);
 });
+
+import { formBody } from '../lib/form.js';
+
+function formEnv(sheetRowsGviz) {
+  const posted = [];
+  const fetch = async (url, init = {}) => {
+    if (String(url).includes('/formResponse')) {
+      posted.push(new URLSearchParams(init.body));
+      return { ok: true, status: 200, text: async () => '<html><a href="viewform?usp=form_confirm">Nog een antwoord</a></html>' };
+    }
+    if (String(url).includes('/gviz/')) {
+      const cols = ['Timestamp', 'Date', 'Aantal kilometers', 'Getankt?', 'Kosten tanken', 'Literprijs', 'Gebruiker'].map((label) => ({ label }));
+      return { ok: true, status: 200, text: async () => `x(${JSON.stringify({ status: 'ok', table: { cols, rows: sheetRowsGviz } })});` };
+    }
+    throw new Error('onverwacht: ' + url);
+  };
+  return { posted, cfg: { url: 'https://script.example/exec', token: 't', costs: true, formId: 'FORM', sheetId: 'SHEETID', fetch } };
+}
+const gvRow = (date, km, getankt, cost, hh) => ({ c: [{ v: 'Date(2026,10,22,9,0,0)' }, { v: `Date(${date})` }, { v: km }, { v: getankt }, cost == null ? null : { v: cost }, null, { v: hh }] });
+
+test('formulier: rit en tankbeurt goed ingevuld', () => {
+  const r = formBody({ type: 'rit', date: '2026-11-22', hh: 'Klein', km: 12 });
+  assert.equal(r.get('entry.77585565_year'), '2026'); assert.equal(r.get('entry.77585565_month'), '11'); assert.equal(r.get('entry.77585565_day'), '22');
+  assert.equal(r.get('entry.2518882'), 'Klein'); assert.equal(r.get('entry.1326077704'), '12'); assert.equal(r.get('entry.1884246097'), 'No');
+  const t = formBody({ type: 'tank', date: '2026-11-22', hh: 'Groot', cost: 61.5, lp: 1.95 });
+  assert.deepEqual([t.get('entry.1326077704'), t.get('entry.1884246097'), t.get('entry.628239698'), t.get('entry.269946942')], ['0', 'Yes', '61.5', '1.95']);
+});
+
+test('formulier: nieuwe rit versturen, al aanwezige niet nog eens, bewerken na de sheet geweigerd', async () => {
+  const env = formEnv([gvRow('2026,10,22', 7, 'No', null, 'Groot')]);      // Groot 7 km stond er al (bv. eerdere poging)
+  const store = memoryStore();
+  const ctx = { code: 'c', store: () => store, sheet: env.cfg };
+  await handle(req('POST', '/api/entries', { puts: [
+    { id: 'f1', type: 'rit', date: '2026-11-22', t: 1, hh: 'Klein', km: 12, upd: 10 },
+    { id: 'f2', type: 'rit', date: '2026-11-22', t: 2, hh: 'Groot', km: 7, upd: 11 },
+    { id: 'f3', type: 'tank', date: '2026-11-22', t: 3, hh: 'Groot', cost: 61.5, upd: 12 },
+  ] }), ctx);
+  assert.equal(env.posted.length, 2);                                       // f1 en f3; f2 stond er al
+  assert.deepEqual(env.posted.map((p) => p.get('entry.2518882')), ['Klein', 'Groot']);
+  assert.equal((await store.unsynced(10)).length, 0);
+  const res = await handle(req('POST', '/api/entries', { puts: [{ id: 'f1', type: 'rit', date: '2026-11-22', t: 1, hh: 'Klein', km: 99, upd: 20 }] }), ctx);
+  assert.deepEqual((await res.json()).rejected, ['f1']);
+  assert.equal(env.posted.length, 2);
+});
+
+test('formulier geeft geen bevestiging: rit blijft in de wachtrij', async () => {
+  const env = formEnv([]);
+  const orig = env.cfg.fetch;
+  env.cfg.fetch = async (url, init) => (String(url).includes('/formResponse') ? { ok: false, status: 302, text: async () => '' } : orig(url, init));
+  const store = memoryStore();
+  const errs = []; const oe = console.error; console.error = (...a) => errs.push(a.join(' '));
+  try {
+    await handle(req('POST', '/api/entries', { puts: [{ id: 'g1', type: 'rit', date: '2026-11-22', t: 1, hh: 'Klein', km: 5, upd: 10 }] }), { code: 'c', store: () => store, sheet: env.cfg });
+  } finally { console.error = oe; }
+  assert.equal((await store.unsynced(10)).length, 1);
+  assert.ok(errs.some((e) => /Formulier gaf 302/.test(e)));
+});

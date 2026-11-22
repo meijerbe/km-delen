@@ -38,7 +38,7 @@ Het script voegt in `form_data` een kolom **App-id** toe; daarmee worden wijzigi
 
 ### De spreadsheet is de bron
 
-Ritten en tankbeurten leest de app rechtstreeks uit *form_data* (via `/api/costs`, gviz). Uit de database toont de app alleen wat nog niet in de sheet staat; die regels kun je in de app nog aanpassen of verwijderen. Staat iets eenmaal in de sheet, dan pas je het daar aan. Het script schrijft alleen in de eigen kolommen (Timestamp, Date, km, stand, bijrijders, getankt, kosten, literprijs, gebruiker), slaat beveiligde bijzaak-kolommen over en gebruikt Timestamp als sleutel zodat een herhaalde poging geen dubbele regel maakt.
+Ritten en tankbeurten leest de app rechtstreeks uit *form_data* (via `/api/costs`, gviz). Uit de database toont de app alleen wat nog niet in de sheet staat; die regels kun je in de app nog aanpassen of verwijderen. Staat iets eenmaal in de sheet, dan pas je het daar aan. Omdat *form_data* beveiligd is, stuurt de server nieuwe ritten en tankbeurten in via het Google-formulier (`FORM_ID` in Vercel; de vragen staan in `lib/form.js`). Eerst kijkt hij of de regel er al staat, zodat een herhaalde poging geen dubbele regel maakt. Kilometerstand en bijrijders staan niet in het formulier en komen dus niet in de sheet. Zonder `FORM_ID` gebruikt de server het script: dat schrijft alleen in de eigen kolommen (Timestamp, Date, km, stand, bijrijders, getankt, kosten, literprijs, gebruiker), slaat beveiligde bijzaak-kolommen over en gebruikt Timestamp als sleutel zodat een herhaalde poging geen dubbele regel maakt.
 
 ### Polo-diorama
 
