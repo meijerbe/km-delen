@@ -42,7 +42,7 @@ Het script staat los in een eigen Google-account (de sheet is van een werkaccoun
 
 ### Reserveringen (gedeelde agenda)
 
-Het Rit-scherm toont wie de Polo nu en straks gereserveerd heeft, uit de gedeelde Google-agenda. Zet in Vercel `CALENDAR_ICS` = het **geheime adres in iCal-indeling** van die agenda (Google Agenda → Instellingen → de agenda → *Agenda integreren*). Klein/Groot herkent de app aan dat woord in de titel; anders toont hij de titel. Wie nu gereserveerd heeft, staat bij *Wie rijdt er?* alvast gekozen, en rijdt het andere stel, dan volgt een waarschuwing. Herhalende afspraken worden (nog) niet meegenomen.
+Het Rit-scherm toont wie de Polo nu en straks gereserveerd heeft, uit de gedeelde Google-agenda. Zet in Vercel `CALENDAR_ICS` = het **geheime adres in iCal-indeling** van die agenda (Google Agenda → Instellingen → de agenda → *Agenda integreren*). Klein/Groot herkent de app aan dat woord in de titel, of aan de namen/initialen in `CALENDAR_PEOPLE` (bijv. `Klein=naam1,naam2;Groot=c,s`; losse woorden, dus "C+S" telt als c en s). Anders toont hij de titel. Wie nu gereserveerd heeft, staat bij *Wie rijdt er?* alvast gekozen, en rijdt het andere stel, dan volgt een waarschuwing. Herhalende afspraken worden (nog) niet meegenomen.
 
 ### Polo-diorama
 

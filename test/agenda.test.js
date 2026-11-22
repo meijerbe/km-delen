@@ -44,3 +44,15 @@ test('fetchAgenda: niet ingesteld = null, fout bij 404', async () => {
   assert.equal(await fetchAgenda(undefined), null);
   await assert.rejects(fetchAgenda('https://x', { fetchFn: async () => ({ ok: false, status: 404 }) }), /404/);
 });
+
+import { peopleMap } from '../lib/agenda.js';
+
+test('namen en initialen per stel herkennen', () => {
+  const m = peopleMap('Klein=anna,bob;Groot=c,s');
+  assert.equal(hhOfTitle('C+S auto Ede', m), 'Groot');
+  assert.equal(hhOfTitle('ma Bob auto verzoek', m), 'Klein');
+  assert.equal(hhOfTitle('Kleien met Anna', m), 'Klein');        // "Kleien" telt niet, Anna wel
+  assert.equal(hhOfTitle('Kleien', m), null);
+  assert.equal(hhOfTitle('Anna en C samen', m), null);           // beide stellen: onbekend
+  assert.equal(hhOfTitle('Groot weg', peopleMap('')), 'Groot');
+});
