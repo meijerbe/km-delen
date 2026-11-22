@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { handle, handleImport, handleCosts, handlePlaces, health } from '../lib/handler.js';
+import { handle, handleCosts, handlePlaces, health } from '../lib/handler.js';
 import { readFileSync } from 'node:fs';
 import { sheetConfig } from '../lib/sheet.js';
 import { memoryStore } from '../lib/store.js';
@@ -33,7 +33,6 @@ createServer(async (req, res) => {
   try {
     const routes = {
       '/api/entries': (r, c) => handle(r, c),
-      '/api/sheet-import': (r, c) => handleImport(r, c),
       '/api/health': (_r, c) => health(c),
       '/api/costs': (r, c) => handleCosts(r, c),
       '/api/places': (r, c) => handlePlaces(r, c),

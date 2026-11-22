@@ -24,21 +24,21 @@ Web-app om bij een gedeelde auto per rit bij te houden wie (stel **Klein** of **
 
 ### Koppeling met de Google Sheet
 
-De app schrijft elke rit en tankbeurt naar het tabblad `form_data`, net als het Google-formulier. Het tabblad Overview rekent dus gewoon door.
+De spreadsheet is de bron. De app leest alles rechtstreeks uit de (openbaar gedeelde) sheet via Google's gviz-uitvoer (`SPREADSHEET_ID` in Vercel): ritten en tankbeurten uit *form_data*, kosten uit *Overige kosten*, betalingen uit *Verrekeningen*.
 
-De spreadsheet is van een werkaccount dat geen web-apps mag publiceren, dus het script staat los in een eigen Google-account en opent de sheet via het ID.
+Wat je in de app invoert, gaat zo de sheet in:
+
+- **Ritten en tankbeurten** via het Google-formulier, net als met de hand (`FORM_ID` in Vercel; de vragen staan in `lib/form.js`). *form_data* is beveiligd, het formulier mag er wel in schrijven. De server kijkt eerst of de regel er al staat, zodat een herhaalde poging geen dubbele regel geeft. Kilometerstand en bijrijders zitten niet in het formulier en komen dus niet in de sheet.
+- **Kosten en betalingen** via het Apps Script (`SHEET_WEBHOOK_URL` en `SHEET_TOKEN` in Vercel), met de kolom **App-id** om ze terug te vinden.
+
+Tot iets in de sheet staat, toont de app het met "nog niet in de sheet" en kun je het in de app aanpassen of verwijderen. Staat het erin, dan pas je het in de sheet aan (kosten en betalingen met een App-id kunnen ook in de app). Lukt het versturen even niet, dan blijft het in de wachtrij en gaat het mee met de volgende wijziging of de health-check.
+
+Het script staat los in een eigen Google-account (de sheet is van een werkaccount) en opent de sheet via het ID:
 
 1. [script.google.com](https://script.google.com) → **New project**, plak [`google-apps-script/Code.gs`](google-apps-script/Code.gs) en sla op.
 2. **Project Settings → Script Properties**: `TOKEN` = dezelfde waarde als `SHEET_TOKEN` in Vercel, `SPREADSHEET_ID` = het ID uit de URL van de spreadsheet.
 3. **Deploy → New deployment → Web app**. Execute as: *Me*, Who has access: *Anyone*. Geef toestemming en kopieer de URL.
-4. Zet in Vercel `SHEET_WEBHOOK_URL` = die URL en redeploy.
-5. In de app: **Instellingen → Formulier-invoer ophalen** leest de bestaande regels eenmalig in (en later nieuwe formulier-invoer; dubbele regels worden overgeslagen).
-
-Het script voegt in `form_data` een kolom **App-id** toe; daarmee worden wijzigingen en verwijderingen in de app ook in de sheet doorgevoerd. Lukt het schrijven naar de sheet even niet, dan gaat het mee met de volgende wijziging of de health-check.
-
-### De spreadsheet is de bron
-
-Ritten en tankbeurten leest de app rechtstreeks uit *form_data* (via `/api/costs`, gviz). Uit de database toont de app alleen wat nog niet in de sheet staat; die regels kun je in de app nog aanpassen of verwijderen. Staat iets eenmaal in de sheet, dan pas je het daar aan. Omdat *form_data* beveiligd is, stuurt de server nieuwe ritten en tankbeurten in via het Google-formulier (`FORM_ID` in Vercel; de vragen staan in `lib/form.js`). Eerst kijkt hij of de regel er al staat, zodat een herhaalde poging geen dubbele regel maakt. Kilometerstand en bijrijders staan niet in het formulier en komen dus niet in de sheet. Zonder `FORM_ID` gebruikt de server het script: dat schrijft alleen in de eigen kolommen (Timestamp, Date, km, stand, bijrijders, getankt, kosten, literprijs, gebruiker), slaat beveiligde bijzaak-kolommen over en gebruikt Timestamp als sleutel zodat een herhaalde poging geen dubbele regel maakt.
+4. Zet in Vercel `SHEET_WEBHOOK_URL` = die URL en redeploy. Een nieuwe versie van het script: **Deploy → Manage deployments → ✏️ → New version** (de URL blijft gelijk).
 
 ### Polo-diorama
 
@@ -62,7 +62,6 @@ Met **💸 Betaling invullen** leg je vast dat het ene stel het andere iets heef
 
 De spreadsheet is de bron: betalingen staan in het tabblad *Verrekeningen* (Datum, Van, Aan, Bedrag, Notitie, Bevestigd, App-id). Het script maakt dat tabblad zelf aan bij de eerste betaling. Je kunt er ook direct in typen; een ✓ (of wat dan ook) in *Bevestigd* telt als ontvangen. Regels met een App-id kun je in de app bewerken; de rest pas je in de sheet aan.
 
-Kosten en betalingen die je in de app invoert, gaan naar de sheet zodra het script is bijgewerkt en `SHEET_COSTS=1` in Vercel staat; tot die tijd wachten ze in de database.
 
 De workflow *Database wakker houden* roept elke drie dagen `/api/health` aan, zodat Supabase het gratis project niet pauzeert.
 
@@ -87,9 +86,9 @@ npm run test:e2e     # browsertests met nagebootste GPS-rit en twee telefoons
 | `public/index.html` | Schermen en opmaak |
 | `public/app.js` | Interface, GPS-meting, synchronisatie (wachtrij voor offline invoer) |
 | `public/core.js` | Pure rekenlogica: afstand, kilometerstanden, totalen, Excel-export |
-| `api/` | Vercel Functions: gegevens, spreadsheet-import en gezondheidscheck |
-| `lib/` | Afhandeling, validatie, opslag (Postgres of in-memory) en spreadsheet-koppeling |
-| `google-apps-script/Code.gs` | Script in de Google Sheet: schrijft naar en leest uit `form_data` |
+| `api/` | Vercel Functions: gegevens, spreadsheet-gegevens, plekken en gezondheidscheck |
+| `lib/` | Afhandeling, validatie, opslag (Postgres of in-memory), sheet lezen (`costs.js`, `rides.js`) en schrijven (`form.js`, `sheet.js`) |
+| `google-apps-script/Code.gs` | Apps Script: kosten en betalingen in de sheet zetten |
 | `test/`, `e2e/` | Unit- en browsertests |
 
 Beveiliging: de API vraagt de groepscode in header `x-groep`. Iedereen met de code kan lezen en schrijven; deel hem alleen met de vier gebruikers.

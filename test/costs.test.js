@@ -93,22 +93,22 @@ test('weetjes over verzekering, belasting en duurste klus', () => {
 test('/api/costs: code verplicht, en fout van Google netjes doorgeven', async () => {
   const req = (code) => new Request('http://x/api/costs', { headers: { 'x-groep': code } });
   assert.equal((await handleCosts(req('fout'), { code: 'c' })).status, 401);
-  const ok = await handleCosts(req('c'), { code: 'c', sheet: { costs: true }, sheetCosts: async () => [{ id: 'k1' }], sheetPayments: async () => [{ id: 'b1' }] });
+  const ok = await handleCosts(req('c'), { code: 'c', sheet: { url: 'u' }, sheetCosts: async () => [{ id: 'k1' }], sheetPayments: async () => [{ id: 'b1' }] });
   assert.deepEqual(await ok.json(), { costs: [{ id: 'k1' }], payments: [{ id: 'b1' }], rides: null, costsSync: true, sheetUrl: null });
   const bad = await handleCosts(req('c'), { code: 'c', sheetCosts: async () => { throw new Error('403'); } });
   assert.equal(bad.status, 502);
 });
 
-test('kosten uit de app wachten op SHEET_COSTS voordat ze naar de sheet gaan', async () => {
+test('kosten uit de app gaan via het script naar de sheet; zonder script wachten ze', async () => {
   const store = memoryStore();
   const sent = [];
   const fetch = async (_u, init) => { const b = JSON.parse(init.body); sent.push(...b.ops); return new Response(JSON.stringify({ ok: true, results: b.ops.map((o) => ({ id: o.id || o.entry.id, ok: true })) })); };
   const kost = { id: 'k1', type: 'kost', date: '2026-11-21', t: 1, hh: 'Klein', cost: 30, desc: 'Voorlampen', upd: 5 };
   const rq = (body) => new Request('http://x/api/entries', { method: 'POST', headers: { 'x-groep': 'c' }, body: JSON.stringify(body) });
-  await handle(rq({ puts: [kost] }), { code: 'c', store: () => store, sheet: { url: 'u', token: 't', fetch, costs: false } });
+  await handle(rq({ puts: [kost] }), { code: 'c', store: () => store, sheet: { url: null, formId: 'F', fetch } });
   assert.equal(sent.length, 0);
   assert.equal((await store.unsynced(10)).length, 1);
-  await handle(rq({ puts: [{ ...kost, upd: 6 }] }), { code: 'c', store: () => store, sheet: { url: 'u', token: 't', fetch, costs: true } });
+  await handle(rq({ puts: [{ ...kost, upd: 6 }] }), { code: 'c', store: () => store, sheet: { url: 'u', token: 't', fetch } });
   assert.deepEqual(sent.map((o) => o.entry.type), ['kost']);
 });
 

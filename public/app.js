@@ -621,7 +621,7 @@ function renderCosts() {
     ${ins.facts.length ? `<div class="card"><b>Polo-weetjes</b><div class="facts" style="margin-top:10px">${ins.facts.map((f) => `<div><span class="e">${f.emo}</span><span>${esc(f.text)}</span></div>`).join('')}</div></div>` : ''}
 
     <h2 class="between"><span>Vaste kosten</span><button class="ghost small" style="padding:6px 12px" id="btnAddCost">＋ Toevoegen</button></h2>
-    ${!costsSync && (costs.some((c) => c.pending) || payments.some((p) => p.pending)) ? '<p class="hint" style="margin:-4px 4px 8px">Kosten en betalingen uit de app komen in de spreadsheet zodra het script is bijgewerkt.</p>' : ''}
+    ${!costsSync && (costs.some((c) => c.pending) || payments.some((p) => p.pending)) ? '<p class="hint" style="margin:-4px 4px 8px">Kosten en betalingen uit de app komen in de spreadsheet zodra de koppeling met het script werkt.</p>' : ''}
     <div class="card">${list.length ? list.map((c) => `
       <div class="item" data-cost="${esc(c.id)}">
         <span style="font-size:22px">${categoryOf(c.desc).emo}</span>

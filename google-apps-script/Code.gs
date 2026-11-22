@@ -1,17 +1,16 @@
 /**
- * km-delen ↔ Google Sheet
+ * km-delen ↔ Google Sheet: kosten en betalingen
  *
- * Los script in je eigen Google-account (script.google.com → New project), of gekoppeld aan de sheet.
+ * Los script in je eigen Google-account (script.google.com → New project).
  * Project Settings → Script Properties:
- *   TOKEN          = de code uit de installatie-instructie (SHEET_TOKEN in Vercel)
- *   SPREADSHEET_ID = het ID uit de URL van de spreadsheet (niet nodig als het script aan de sheet vastzit)
+ *   TOKEN          = SHEET_TOKEN uit Vercel
+ *   SPREADSHEET_ID = het ID uit de URL van de spreadsheet
  * Deploy → New deployment → Web app, Execute as: Me, Who has access: Anyone.
  *
- * - doPost: de app zet ritten/tankbeurten in het tabblad form_data (bijwerken of verwijderen via kolom "App-id").
- * - doGet:  levert de regels van form_data, zodat de app formulier-invoer kan inlezen.
+ * doPost zet kosten in "Overige kosten" en betalingen in "Verrekeningen" (bijwerken/verwijderen via kolom "App-id").
+ * Ritten en tankbeurten gaan niet via dit script maar via het Google-formulier (form_data is beveiligd).
  */
 
-const SHEET_NAME = 'form_data';
 const COSTS_NAME = 'Overige kosten';
 const PAYMENTS_NAME = 'Verrekeningen';
 const PAYMENTS_HEADER = ['Datum', 'Van', 'Aan', 'Bedrag', 'Notitie', 'Bevestigd', 'App-id'];
@@ -24,26 +23,20 @@ function doPost(e) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    // form_data pas openen als een rit/tankbeurt het nodig heeft: kosten en betalingen raken dat tabblad niet.
-    var rides = null;
-    const ridesSheet = function () {
-      if (!rides) { const sheet = sheet_(); rides = { sheet: sheet, cols: columns_(sheet) }; }
-      return rides;
-    };
     const results = (body.ops || []).map(function (op) {
+      const id = op.id || (op.entry && op.entry.id);
       try {
         var out;
-        if (op.op === 'delete') out = remove_(ridesSheet, op);
+        if (op.op === 'delete') out = remove_(id);
         else if (op.entry && op.entry.type === 'kost') out = upsertCost_(op.entry);
         else if (op.entry && op.entry.type === 'betaling') out = upsertPayment_(op.entry);
-        else { const r = ridesSheet(); out = upsert_(r.sheet, r.cols, op.entry); }
+        else throw new Error('Alleen kosten en betalingen; ritten gaan via het formulier');
         SpreadsheetApp.flush();      // schrijffouten nu, bij deze regel (niet pas bij de volgende)
         return out;
-      }
-      catch (err) {
+      } catch (err) {
         // Met regelnummer/functie, zodat de fout in de Vercel-logs direct aan te wijzen is.
         const where = err && err.stack ? ' @ ' + String(err.stack).split('\n').slice(0, 3).join(' | ') : '';
-        return { id: op.id || (op.entry && op.entry.id), ok: false, error: String(err) + where };
+        return { id: id, ok: false, error: String(err) + where };
       }
     });
     return json_({ ok: true, results: results });
@@ -52,22 +45,22 @@ function doPost(e) {
   }
 }
 
-function doGet(e) {
-  if (!checkToken_(e.parameter.token)) return json_({ ok: false, error: 'token' });
-  if (e.parameter.protections) return json_({ ok: true, protections: protectionReport_() });
-  const sheet = sheet_();
-  const values = sheet.getDataRange().getValues();
-  const tz = Session.getScriptTimeZone();
-  return json_({
-    ok: true,
-    header: values[0],
-    rows: values.slice(1).map(function (r) {
-      return r.map(function (v) { return v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : v; });
-    }),
-  });
+/** Kostenpost of betaling met deze App-id verwijderen. */
+function remove_(id) {
+  const costs = book_().getSheetByName(COSTS_NAME);
+  if (costs) {
+    const row = findRow_(costs, costColumns_(costs), id);
+    if (row) { costs.deleteRow(row); return { id: id, ok: true, removed: true }; }
+  }
+  const pays = book_().getSheetByName(PAYMENTS_NAME);
+  if (pays && pays.getLastRow() >= 2) {
+    const row = findRow_(pays, { id: PAYMENTS_HEADER.length }, id);
+    if (row) { pays.deleteRow(row); return { id: id, ok: true, removed: true }; }
+  }
+  return { id: id, ok: true, removed: false };
 }
 
-// ---------- intern ----------
+const colName_ = function (c) { return c <= 26 ? String.fromCharCode(64 + c) : 'kolom ' + c; };
 
 function checkToken_(t) {
   const expected = PropertiesService.getScriptProperties().getProperty('TOKEN');
@@ -80,68 +73,9 @@ function book_() {
 }
 
 function sheet_(name) {
-  const s = book_().getSheetByName(name || SHEET_NAME);
-  if (!s) throw new Error('Tabblad ' + (name || SHEET_NAME) + ' niet gevonden');
+  const s = book_().getSheetByName(name);
+  if (!s) throw new Error('Tabblad ' + name + ' niet gevonden');
   return s;
-}
-
-/** Zoekt kolommen op koptekst, zodat de volgorde van het formulier niet uitmaakt. */
-function columns_(sheet) {
-  const header = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
-  const find = function (re) {
-    for (var i = 0; i < header.length; i++) if (re.test(String(header[i]).trim())) return i + 1;
-    return 0;
-  };
-  const kmCol = find(/^aantal\s+kilomet/i);
-  const cols = {
-    ts: find(/^(tijdstempel|timestamp)/i),
-    date: find(/^(date|datum)\b/i),
-    hh: find(/^(bestuurder|gebruiker)/i),
-    bij: find(/bijrijder/i),
-    km: kmCol || find(/kilomet(?!erstand)/i),
-    stand: find(/kilometerstand/i),
-    getankt: find(/getankt/i),
-    cost: find(/kosten/i),
-    lp: find(/literprijs/i),
-    id: find(new RegExp('^' + ID_HEADER + '$', 'i')),
-  };
-  // Geen App-id-kolom (form_data is beveiligd)? Dan is Timestamp de sleutel: zie keyTime_.
-  if (!cols.id && !cols.ts) throw new Error('form_data heeft geen kolom App-id of Timestamp om ritten terug te vinden');
-  return cols;
-}
-
-/** Vaste, unieke tijd per app-regel (op de seconde): staat in Timestamp als er geen App-id-kolom is. */
-function keyTime_(e) {
-  return Math.floor(Number(e.t) / 1000) * 1000;
-}
-
-/** Rij met deze Timestamp (op de seconde) én dezelfde datum en bestuurder; 0 als die er niet is. */
-function findByTime_(sheet, cols, e) {
-  if (!cols.ts || !e || !(Number(e.t) > 0)) return 0;
-  const last = sheet.getLastRow();
-  if (last < 2) return 0;
-  const key = keyTime_(e) / 1000;
-  const ts = sheet.getRange(2, cols.ts, last - 1, 1).getValues();
-  for (var i = 0; i < ts.length; i++) {
-    const v = ts[i][0];
-    if (!(v instanceof Date) || Math.floor(v.getTime() / 1000) !== key) continue;
-    const row = i + 2;
-    if (e.hh && cols.hh && String(sheet.getRange(row, cols.hh).getValue()).trim().toLowerCase() !== String(e.hh).toLowerCase()) continue;
-    return row;
-  }
-  return 0;
-}
-
-/** Kolom App-id helemaal achteraan toevoegen; lukt dat niet (beveiligd), dan een duidelijke melding. */
-function addIdColumn_(sheet) {
-  const col = sheet.getLastColumn() + 1;
-  try {
-    sheet.getRange(1, col).setValue(ID_HEADER);
-    SpreadsheetApp.flush();
-  } catch (err) {
-    throw new Error('Kolom ' + ID_HEADER + ' kan niet worden toegevoegd in ' + sheet.getName() + ' (beveiligd). Zet "' + ID_HEADER + '" zelf in een vrije kolom achteraan.');
-  }
-  return col;
 }
 
 function findRow_(sheet, cols, id) {
@@ -151,86 +85,6 @@ function findRow_(sheet, cols, id) {
   for (var i = 0; i < ids.length; i++) if (String(ids[i][0]) === String(id)) return i + 2;
   return 0;
 }
-
-function upsert_(sheet, cols, e) {
-  if (!e || !e.id) throw new Error('geen id');
-  var row = cols.id ? findRow_(sheet, cols, e.id) : 0;
-  if (!row) row = findByTime_(sheet, cols, e);
-  const isNew = !row;
-  if (isNew) row = sheet.getLastRow() + 1;
-  const p = e.date.split('-').map(Number);
-  const yn = yesNo_(sheet, cols);
-  const vals = {};
-  const set = function (c, v) { if (c) vals[c] = v; };
-  // Met App-id: Timestamp = moment van wegschrijven. Zonder: de vaste sleutel-tijd van de regel.
-  if (isNew || !cols.id) set(cols.ts, cols.id ? new Date() : new Date(keyTime_(e)));
-  set(cols.date, new Date(p[0], p[1] - 1, p[2], 12));
-  set(cols.hh, e.hh);
-  set(cols.bij, e.type === 'rit' ? (e.bij || '') : '');
-  set(cols.km, e.type === 'rit' ? e.km : '');
-  set(cols.stand, e.type === 'rit' && e.stand != null ? e.stand : '');
-  set(cols.getankt, e.type === 'tank' ? yn.yes : yn.no);
-  set(cols.cost, e.type === 'tank' ? e.cost : '');
-  set(cols.lp, e.type === 'tank' && e.lp != null ? e.lp : '');
-  set(cols.id, e.id);
-  // Beveiligde kolommen overslaan; alleen datum, gebruiker en km/bedrag zijn echt nodig.
-  const must = [cols.date, cols.hh, e.type === 'tank' ? cols.cost : cols.km];
-  if (!cols.id) must.push(cols.ts);                 // zonder App-id is Timestamp de sleutel
-  const blocked = blockedCols_(sheet, row, Object.keys(vals).map(Number));
-  const blockedMust = blocked.filter(function (c) { return must.indexOf(c) >= 0; });
-  if (blockedMust.length) throw new Error('Beveiligd in ' + sheet.getName() + ' rij ' + row + ': kolom ' + blockedMust.map(colName_).join(', ') + ' — er is niets geschreven');
-  blocked.forEach(function (c) { delete vals[c]; });
-  // Cel voor cel: andere (formule- of beveiligde) kolommen van de rij blijven onaangeroerd.
-  Object.keys(vals).forEach(function (c) { sheet.getRange(row, Number(c)).setValue(vals[c]); });
-  return { id: e.id, ok: true, row: row, skipped: blocked.map(colName_) };
-}
-
-function yesNo_(sheet, cols) {
-  const out = { yes: 'Ja', no: 'Nee' };
-  if (!cols.getankt || sheet.getLastRow() < 2) return out;
-  const vals = sheet.getRange(2, cols.getankt, sheet.getLastRow() - 1, 1).getValues().map(function (r) { return String(r[0]).trim(); });
-  for (var i = 0; i < vals.length; i++) {
-    if (/^(ja|yes|j|y)$/i.test(vals[i])) { out.yes = vals[i]; break; }
-  }
-  for (var j = 0; j < vals.length; j++) {
-    if (/^(nee|no|n)$/i.test(vals[j])) { out.no = vals[j]; break; }
-  }
-  return out;
-}
-
-function remove_(ridesSheet, op) {
-  const id = op.id;
-  var row = 0, ridesError = null;
-  try {
-    const r = ridesSheet();
-    row = r.cols.id ? findRow_(r.sheet, r.cols, id) : 0;
-    if (!row && op.t && (!op.type || op.type === 'rit' || op.type === 'tank')) row = findByTime_(r.sheet, r.cols, op);
-    if (row) {
-      try { r.sheet.deleteRow(row); }
-      catch (err) {   // rij weghalen mag niet (beveiliging): dan alleen onze cellen leegmaken
-        ['ts', 'date', 'hh', 'bij', 'km', 'stand', 'getankt', 'cost', 'lp', 'id'].forEach(function (k) {
-          if (r.cols[k]) r.sheet.getRange(row, r.cols[k]).setValue('');
-        });
-      }
-      return { id: id, ok: true, removed: true };
-    }
-  } catch (err) { ridesError = err; }           // form_data onbruikbaar: verderop zoeken (kosten, betalingen)
-  const costs = book_().getSheetByName(COSTS_NAME);
-  if (costs) {
-    const cc = costColumns_(costs);
-    row = findRow_(costs, cc, id);
-    if (row) { costs.deleteRow(row); return { id: id, ok: true, removed: true }; }
-  }
-  const pays = book_().getSheetByName(PAYMENTS_NAME);
-  if (pays && pays.getLastRow() >= 2) {
-    row = findRow_(pays, { id: PAYMENTS_HEADER.length }, id);
-    if (row) { pays.deleteRow(row); return { id: id, ok: true, removed: true }; }
-  }
-  if (ridesError) throw ridesError;
-  return { id: id, ok: true, removed: false };
-}
-
-// ---------- Overige kosten ----------
 
 function costColumns_(sheet) {
   const header = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
@@ -244,6 +98,18 @@ function costColumns_(sheet) {
   };
   if (!cols.id) cols.id = addIdColumn_(sheet);
   return cols;
+}
+
+/** Kolom App-id helemaal achteraan toevoegen; lukt dat niet (beveiligd), dan een duidelijke melding. */
+function addIdColumn_(sheet) {
+  const col = sheet.getLastColumn() + 1;
+  try {
+    sheet.getRange(1, col).setValue(ID_HEADER);
+    SpreadsheetApp.flush();
+  } catch (err) {
+    throw new Error('Kolom ' + ID_HEADER + ' kan niet worden toegevoegd in ' + sheet.getName() + ' (beveiligd). Zet "' + ID_HEADER + '" zelf in een vrije kolom achteraan.');
+  }
+  return col;
 }
 
 /** Laatste regel met een bedrag (de kolommen ernaast bevatten soms subtotalen). */
@@ -278,8 +144,6 @@ function upsertCost_(e) {
   return { id: e.id, ok: true, row: row };
 }
 
-// ---------- Verrekeningen (betalingen tussen de stellen) ----------
-
 function paymentsSheet_() {
   const book = book_();
   // Op naam zoeken, ongevoelig voor hoofdletters en spaties (een zelf aangemaakt tabblad heet soms "verrekeningen ").
@@ -310,26 +174,10 @@ function upsertPayment_(e) {
   return { id: e.id, ok: true, row: row };
 }
 
-/** Overzicht van beveiligingen per tabblad (bereik, of wij mogen bewerken). Geen celinhoud. */
-function protectionReport_() {
-  return book_().getSheets().map(function (sh) {
-    const out = { tab: sh.getName(), ranges: [], sheet: null };
-    sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(function (p) {
-      out.ranges.push({ range: p.getRange().getA1Notation(), canEdit: p.canEdit(), warningOnly: p.isWarningOnly() });
-    });
-    sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function (p) {
-      out.sheet = { canEdit: p.canEdit(), warningOnly: p.isWarningOnly(), unprotected: p.getUnprotectedRanges().map(function (r) { return r.getA1Notation(); }) };
-    });
-    return out;
-  });
-}
-
 /** Getalnotatie zetten; in een tabel met getypte kolommen mag dat niet en slaan we het over. */
 function tryFormat_(range, format) {
   try { range.setNumberFormat(format); SpreadsheetApp.flush(); } catch (err) { /* getypte kolom */ }
 }
-
-const colName_ = function (c) { return c <= 26 ? String.fromCharCode(64 + c) : 'kolom ' + c; };
 
 /** Welke van deze kolommen in deze rij zijn beveiligd voor ons? Vooraf checken, zodat we geen halve rij schrijven. */
 function blockedCols_(sheet, row, colNums) {
