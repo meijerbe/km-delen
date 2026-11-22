@@ -320,3 +320,30 @@ test('ritten uit de spreadsheet: zichtbaar, maar aanpassen gaat via de sheet', a
   await expect(page.locator('#toast')).toContainText('aanpassen of verwijderen doe je daar');
   await expect(page.locator('#sheetBg')).not.toHaveClass(/on/);
 });
+
+test('agenda: wie de Polo nu heeft, staat alvast geselecteerd; waarschuwing bij rijden voor de ander', async ({ browser }) => {
+  const ctx = await browser.newContext({ permissions: ['geolocation'], geolocation: { latitude: 51.93, longitude: 4.47 } });
+  const p = await ctx.newPage();
+  const now = Date.now(), h = 3600e3;
+  await p.route('**/api/costs', async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    body.agenda = [
+      { start: now - h, end: now + 3 * h, allDay: false, title: 'Groot naar Ikea', hh: 'Groot' },
+      { start: now + 26 * h, end: now + 50 * h, allDay: true, title: 'Klein weekendje', hh: 'Klein' },
+      { start: now + 72 * h, end: now + 73 * h, allDay: false, title: 'Garage', hh: null },
+    ];
+    await route.fulfill({ response: res, json: body });
+  });
+  await login(p);
+  await expect(p.locator('#gate')).toBeHidden();
+  await expect(p.locator('#agendaCard')).toBeVisible();
+  await expect(p.locator('#agendaNow')).toContainText('Groot');
+  await expect(p.locator('#agendaCard')).toContainText('Klein');
+  await expect(p.locator('#agendaCard')).toContainText('Garage');
+  await expect(p.locator('#pickStart .sel-Groot')).toBeVisible();          // Groot staat alvast gekozen
+  await p.click('#pickStart >> text=Klein');
+  await p.click('#btnStart');
+  await expect(p.locator('#toast')).toContainText('Groot heeft de Polo nu gereserveerd', { timeout: 5000 });
+  await ctx.close();
+});

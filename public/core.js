@@ -265,3 +265,11 @@ export function mergeSheetList(sheetList, appRows, { loadedAt = 0, now = Date.no
   }
   return merged;
 }
+
+/** Reserveringen: wat loopt er nu, en wat komt eraan (max. n). */
+export function agendaNow(events, now = Date.now(), n = 2) {
+  if (!Array.isArray(events)) return null;
+  const current = events.find((e) => e.start <= now && now < e.end) || null;
+  const next = events.filter((e) => e.start > now && e !== current).slice(0, n);
+  return { current, next };
+}

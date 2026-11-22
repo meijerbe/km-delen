@@ -1,5 +1,5 @@
 import {
-  HOUSEHOLDS, trackStep, computeRides, mergeRides, mergeSheetList, counterBefore, totals, excelText, parseNum, newId,
+  HOUSEHOLDS, trackStep, computeRides, mergeRides, mergeSheetList, agendaNow, counterBefore, totals, excelText, parseNum, newId,
   costInsights, categoryOf, toRD, fromRD, PARK_ID, parkingOf,
 } from './core.js';
 import { car, duo, logo } from './art.js';
@@ -9,7 +9,7 @@ import { startLine, stopLine, tankLine, compareLine, honk, jingle } from './fun.
 // ================= opslag op het toestel =================
 const KEY = {
   entries: 'kmdelen.v3.entries', outbox: 'kmdelen.v3.outbox', code: 'kmdelen.v3.code',
-  settings: 'kmdelen.v3.settings', active: 'kmdelen.v3.active', costs: 'kmdelen.v3.sheetcosts', sheetUrl: 'kmdelen.v3.sheeturl', rides: 'kmdelen.v3.sheetrides', payments: 'kmdelen.v3.sheetpayments',
+  settings: 'kmdelen.v3.settings', active: 'kmdelen.v3.active', costs: 'kmdelen.v3.sheetcosts', sheetUrl: 'kmdelen.v3.sheeturl', rides: 'kmdelen.v3.sheetrides', agenda: 'kmdelen.v3.agenda', payments: 'kmdelen.v3.sheetpayments',
 };
 const mem = {};
 const local = {
@@ -234,10 +234,19 @@ async function requestWake() {
   } catch { w.style.display = 'block'; w.textContent = 'Scherm aan houden lukte niet (bijv. door batterijbesparing). Houd de app open tijdens de rit.'; }
 }
 
-let pickHH = settings.lastHH;
+let pickHH = settings.lastHH, pickTouched = false;
+let agenda = local.get(KEY.agenda, null);         // reserveringen uit de gedeelde agenda (null = niet gekoppeld)
+/** Wie de Polo nu gereserveerd heeft, staat alvast geselecteerd (tenzij je zelf al koos). */
+function followAgenda() {
+  const cur = agendaNow(agenda)?.current;
+  if (!active && !pickTouched && cur?.hh) pickHH = cur.hh;
+}
+followAgenda();
 function startRide() {
   active = { id: newId(), start: Date.now(), hh: pickHH, m: 0, last: null };
   settings.lastHH = pickHH; saveSettings(); saveActive();
+  const cur = agendaNow(agenda)?.current;
+  if (cur?.hh && cur.hh !== pickHH) setTimeout(() => toast(`Let op: ${cur.hh} heeft de Polo nu gereserveerd 🤔`), 1800);
   render(); startWatch();
   toast(startLine(pickHH));
 }
@@ -442,13 +451,29 @@ function showCar(el, hh) {
   shownCar[el] = hh; $(el).innerHTML = car(hh);
 }
 function renderIdle() {
-  renderPick($('pickStart'), pickHH, (h) => { pickHH = h; renderIdle(); });
+  renderPick($('pickStart'), pickHH, (h) => { pickHH = h; pickTouched = true; renderIdle(); });
   showCar('heroCar', pickHH);
+  renderAgenda();
   const list = all(), key = today().slice(0, 7), t = totals(list, key), { counter } = computeRides(list);
   $('counterHint').textContent = counter != null ? `Kilometerteller nu ≈ ${nf0.format(counter)}` : '';
   const fun = compareLine(t.Klein + t.Groot);
   $('monthCard').innerHTML = `<div class="between"><b style="text-transform:capitalize">${monthLabel(key)}</b>
     <span class="muted small">${t.ritten} ${t.ritten === 1 ? 'rit' : 'ritten'}</span></div>${totalsHTML(t)}${fun ? `<div class="fun">${fun}</div>` : ''}`;
+}
+function renderAgenda() {
+  const el = $('agendaCard'), a = agendaNow(agenda);
+  if (!a) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const time = (ms) => new Date(ms).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  const day = (ms) => new Date(ms).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+  const who = (e) => (e.hh ? `${duo(e.hh, 22)}<b>${e.hh}</b>` : `<b>${esc(e.title || 'Gereserveerd')}</b>`);
+  const isToday = (ms) => new Date(ms).toDateString() === new Date().toDateString();
+  const until = (e) => (e.allDay ? (isToday(e.end - 1) ? 'vandaag' : `t/m ${day(e.end - 1)}`) : isToday(e.end) ? `tot ${time(e.end)}` : `tot ${day(e.end)} ${time(e.end)}`);
+  const when = (e) => (e.allDay ? `${day(e.start)}${e.end - e.start > 86400e3 ? ` – ${day(e.end - 1)}` : ''}` : `${isToday(e.start) ? 'vandaag' : day(e.start)} ${time(e.start)}`);
+  el.innerHTML = `<div class="between"><b>🗓️ Reserveringen</b>${a.current ? '' : '<span class="pill" style="background:var(--soft)">nu vrij</span>'}</div>
+    ${a.current ? `<div class="agenda-row" id="agendaNow"><span class="muted small">Nu</span>${who(a.current)}<span class="muted small">${until(a.current)}</span></div>` : ''}
+    ${a.next.map((e) => `<div class="agenda-row"><span class="muted small">${when(e)}</span>${who(e)}</div>`).join('')}
+    ${!a.current && !a.next.length ? '<div class="muted small" style="margin-top:6px">Geen reserveringen de komende twee weken.</div>' : ''}`;
 }
 function renderActive() {
   if (!active) return;
@@ -534,6 +559,7 @@ async function loadCosts(force = false) {
     sheetPayments = data.payments || []; local.set(KEY.payments, sheetPayments);
     if (data.sheetUrl !== undefined) { sheetUrl = data.sheetUrl; local.set(KEY.sheetUrl, sheetUrl); renderAbout(); }
     if (Array.isArray(data.rides)) { sheetRides = data.rides; local.set(KEY.rides, sheetRides); }
+    if (data.agenda !== undefined) { agenda = data.agenda; local.set(KEY.agenda, agenda); followAgenda(); }
     costsError = ''; costsLoadedAt = Date.now();
   } catch (err) { costsError = err instanceof TypeError ? 'Offline: laatst bekende kosten' : err.message; }
   render();

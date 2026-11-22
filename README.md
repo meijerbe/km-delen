@@ -40,6 +40,10 @@ Het script staat los in een eigen Google-account (de sheet is van een werkaccoun
 3. **Deploy → New deployment → Web app**. Execute as: *Me*, Who has access: *Anyone*. Geef toestemming en kopieer de URL.
 4. Zet in Vercel `SHEET_WEBHOOK_URL` = die URL en redeploy. Een nieuwe versie van het script: **Deploy → Manage deployments → ✏️ → New version** (de URL blijft gelijk).
 
+### Reserveringen (gedeelde agenda)
+
+Het Rit-scherm toont wie de Polo nu en straks gereserveerd heeft, uit de gedeelde Google-agenda. Zet in Vercel `CALENDAR_ICS` = het **geheime adres in iCal-indeling** van die agenda (Google Agenda → Instellingen → de agenda → *Agenda integreren*). Klein/Groot herkent de app aan dat woord in de titel; anders toont hij de titel. Wie nu gereserveerd heeft, staat bij *Wie rijdt er?* alvast gekozen, en rijdt het andere stel, dan volgt een waarschuwing. Herhalende afspraken worden (nog) niet meegenomen.
+
 ### Polo-diorama
 
 Het tabblad **📍 Polo** toont de buurt rond Bergselaan × Bergpolderstraat (500 × 500 m) als speelgoedblok met een ondergrond van 10 m (straat, klei, veen, zand), met de geparkeerde Polo erop.
