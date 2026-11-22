@@ -93,8 +93,8 @@ test('weetjes over verzekering, belasting en duurste klus', () => {
 test('/api/costs: code verplicht, en fout van Google netjes doorgeven', async () => {
   const req = (code) => new Request('http://x/api/costs', { headers: { 'x-groep': code } });
   assert.equal((await handleCosts(req('fout'), { code: 'c' })).status, 401);
-  const ok = await handleCosts(req('c'), { code: 'c', sheet: { costs: true }, sheetCosts: async () => [{ id: 'k1' }] });
-  assert.deepEqual(await ok.json(), { costs: [{ id: 'k1' }], costsSync: true });
+  const ok = await handleCosts(req('c'), { code: 'c', sheet: { costs: true }, sheetCosts: async () => [{ id: 'k1' }], sheetPayments: async () => [{ id: 'b1' }] });
+  assert.deepEqual(await ok.json(), { costs: [{ id: 'k1' }], payments: [{ id: 'b1' }], costsSync: true });
   const bad = await handleCosts(req('c'), { code: 'c', sheetCosts: async () => { throw new Error('403'); } });
   assert.equal(bad.status, 502);
 });
@@ -110,4 +110,47 @@ test('kosten uit de app wachten op SHEET_COSTS voordat ze naar de sheet gaan', a
   assert.equal((await store.unsynced(10)).length, 1);
   await handle(rq({ puts: [{ ...kost, upd: 6 }] }), { code: 'c', store: () => store, sheet: { url: 'u', token: 't', fetch, costs: true } });
   assert.deepEqual(sent.map((o) => o.entry.type), ['kost']);
+});
+
+import { parsePaymentsTable } from '../lib/costs.js';
+import { cleanEntry } from '../lib/validate.js';
+
+test('Verrekeningen inlezen; App-id wordt de id; Bevestigd = ✓', () => {
+  const t = { cols: ['Datum', 'Van', 'Aan', 'Bedrag', 'Notitie', 'Bevestigd', 'App-id'].map((label) => ({ label })), rows: [
+    { c: [{ v: 'Date(2026,10,12)' }, { v: 'Groot' }, { v: 'Klein' }, { v: 500, f: '€500.00' }, { v: 'Tikkie' }, { v: '✓' }, { v: 'abc' }] },
+    { c: [{ v: 'Date(2026,10,20)' }, { v: 'Klein' }, { v: 'Groot' }, { v: 25 }, null, null, null] },
+    { c: [null, null, null, null, null, null, null] },
+  ] };
+  const p = parsePaymentsTable(t);
+  assert.deepEqual(p[0], { id: 'abc', type: 'betaling', date: '2026-11-12', hh: 'Groot', amount: 500, note: 'Tikkie', ok: true, src: 'sheet', app: true });
+  assert.equal(p[1].ok, undefined);
+  assert.match(p[1].id, /^v[0-9a-f]{12}$/);
+  assert.deepEqual(parsePaymentsTable({ cols: [{ label: 'Kosten' }], rows: [] }), []);   // ander tabblad
+});
+
+test('Kosten met App-id: de sheet-versie krijgt de id van de app', () => {
+  const t = { cols: ['Kosten', 'Beschrijving', 'Datum', 'Betaald door', 'App-id'].map((label) => ({ label })), rows: [
+    { c: [{ v: 35 }, { v: 'Voorlampen' }, { v: 'Date(2026,10,20)' }, { v: 'Groot' }, { v: 'k1' }] },
+  ] };
+  assert.deepEqual(parseCostsTable(t)[0], { id: 'k1', type: 'kost', date: '2026-11-20', cost: 35, desc: 'Voorlampen', hh: 'Groot', src: 'sheet', app: true });
+});
+
+test('afrekening: betaling gaat van het openstaande bedrag af', () => {
+  const entries = [
+    { id: 'r1', type: 'rit', date: '2026-05-01', t: 1, hh: 'Klein', km: 100 },
+    { id: 'r2', type: 'rit', date: '2026-05-02', t: 2, hh: 'Groot', km: 100 },
+  ];
+  const costs = [{ type: 'kost', date: '2026-05-04', hh: 'Klein', cost: 1000, desc: 'Verzekering' }];
+  let ins = costInsights(entries, costs, new Date(2026, 10, 21));
+  assert.deepEqual([ins.debtor, ins.creditor, ins.amount], ['Groot', 'Klein', 500]);
+  ins = costInsights(entries, costs, new Date(2026, 10, 21), [{ hh: 'Groot', amount: 300 }]);
+  assert.deepEqual([ins.debtor, ins.amount, ins.settle.Groot.paidPart, ins.settle.Klein.paidPart], ['Groot', 200, 300, -300]);
+  ins = costInsights(entries, costs, new Date(2026, 10, 21), [{ hh: 'Groot', amount: 500 }]);
+  assert.equal(ins.amount, 0);
+});
+
+test('betaling valideren', () => {
+  const b = { id: 'b1', type: 'betaling', date: '2026-11-12', t: 1, hh: 'Groot', amount: 500.004, note: ' Tikkie ', ok: true, upd: 3 };
+  assert.deepEqual(cleanEntry(b), { id: 'b1', type: 'betaling', date: '2026-11-12', hh: 'Groot', t: 1, upd: 3, amount: 500, note: 'Tikkie', ok: true });
+  assert.equal(cleanEntry({ ...b, amount: 0 }), null);
 });

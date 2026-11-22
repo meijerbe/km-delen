@@ -167,7 +167,7 @@ test('kosten: afrekening, km-prijs, categorieën en kosten toevoegen', async ({ 
   await expect(p.locator('#ctCat')).toHaveText('🔧 Onderhoud');
   await p.click('#ctSave');
   await expect(p.locator('#pop')).toContainText('€ 45,50 genoteerd');
-  await expect(p.locator('#costsView .item', { hasText: 'Wasstraat' })).toContainText('app');
+  await expect(p.locator('#costsView .item', { hasText: 'Wasstraat' })).toContainText('nog niet in de sheet');
   // Groot betaalt zelf 45,50 waarvan de helft voor Klein ⇒ 22,75 minder
   await expect.poll(euros).toBeCloseTo(before - 22.75, 2);
   await expect(p.locator('#syncTxt')).toHaveText('Gedeeld');
@@ -264,6 +264,38 @@ test('Polo-diorama: buurt laadt, parkeerplek aanwijzen en wegzetten buiten de bu
   await p.click('#btnPark'); await p.click('#pkHere');
   await expect(p.locator('#poloNote')).toContainText('buiten de buurt');
   await expect(p.locator('#poloNote a')).toHaveAttribute('href', /52\.0907/);
+  expect(errors).toEqual([]);
+  await ctx.close();
+});
+
+test('betaling invullen, openstaand bedrag zakt, en bevestigen als ontvangen', async ({ browser }) => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  const errors = [];
+  p.on('pageerror', (e) => errors.push(e.message));
+  await login(p);
+  await expect(p.locator('#gate')).toBeHidden();
+  await tab(p, 'kosten');
+  await expect(p.locator('#costsView')).toContainText('Groot betaalt Klein');
+  const euros = async () => parseFloat((await p.locator('#costsView .amount').innerText()).replace(/[^\d,]/g, '').replace(',', '.'));
+  const before = await euros();
+
+  await p.click('#btnPay');
+  await expect(p.locator('#pyHH .sel-Groot')).toBeVisible();              // de schuldenaar staat al gekozen
+  await expect(p.locator('#pyTo')).toHaveText('aan Klein');
+  expect(await p.inputValue('#pyAmount')).toBe(before.toFixed(2).replace('.', ','));
+  await p.fill('#pyAmount', '100'); await p.fill('#pyNote', 'Tikkie');
+  await p.click('#pySave');
+  await expect(p.locator('#pop')).toContainText('€ 100,00 betaald aan Klein');
+  await expect.poll(euros).toBeCloseTo(before - 100, 2);
+  await p.click('#btnBreakdown');
+  await expect(p.locator('#breakdown')).toContainText('al betaald aan Klein');
+
+  const row = p.locator('#costsView [data-pay]', { hasText: 'Tikkie' });
+  await expect(row).toContainText('nog niet in de sheet');
+  await row.locator('[data-ok]').click();
+  await p.click('#cfYes');
+  await expect(row).toContainText('✅ ontvangen');
   expect(errors).toEqual([]);
   await ctx.close();
 });

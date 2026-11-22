@@ -21,6 +21,7 @@ const placesFetch = process.env.PLACES_RD ? async (url) => {
   return new Response(JSON.stringify({ response: { docs: rd ? [{ centroide_rd: `POINT(${rd[0]} ${rd[1]})` }] : [] } }));
 } : undefined;
 const sheetCosts = process.env.COSTS_FIXTURE ? async () => JSON.parse(readFileSync(process.env.COSTS_FIXTURE, 'utf8')) : async () => [];
+const sheetPayments = process.env.PAYMENTS_FIXTURE ? async () => JSON.parse(readFileSync(process.env.PAYMENTS_FIXTURE, 'utf8')) : async () => [];
 const types = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css',
   '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json',
@@ -43,7 +44,7 @@ createServer(async (req, res) => {
         method: req.method, headers: req.headers,
         body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks),
       });
-      const response = await routes[url.pathname](request, { code, store: () => store, sheet, sheetCosts, places: process.env.PLACES, fetch: placesFetch });
+      const response = await routes[url.pathname](request, { code, store: () => store, sheet, sheetCosts, sheetPayments, places: process.env.PLACES, fetch: placesFetch });
       res.writeHead(response.status, Object.fromEntries(response.headers));
       res.end(Buffer.from(await response.arrayBuffer()));
       return;

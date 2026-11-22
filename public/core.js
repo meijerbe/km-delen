@@ -134,7 +134,7 @@ const DUTCH_MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'j
  * Inzicht in alle kosten. `costs` = vaste kosten (uit de sheet en uit de app), `entries` = ritten/tankbeurten.
  * Afrekening: brandstof naar verhouding van de km, vaste kosten 50/50, min wat elk stel al betaalde.
  */
-export function costInsights(entries, costs, now = new Date()) {
+export function costInsights(entries, costs, now = new Date(), payments = []) {
   const t = totals(entries);
   const km = t.Klein + t.Groot;
   const fuel = t.kosten;
@@ -151,12 +151,17 @@ export function costInsights(entries, costs, now = new Date()) {
   // Afrekening
   const paidFixed = { Klein: 0, Groot: 0 };
   costs.forEach((c) => { paidFixed[c.hh] += c.cost; });
+  // Betalingen tussen de stellen: wie betaalde, lost zijn schuld af
+  const paidOut = { Klein: 0, Groot: 0 };
+  for (const p of payments) paidOut[p.hh] += p.amount;
   const settle = {};
   for (const h of HOUSEHOLDS) {
+    const other = h === 'Klein' ? 'Groot' : 'Klein';
     const fuelShare = km ? (t[h] / km) * fuel : fuel / 2;
     const fuelPart = t.tank[h] - fuelShare;
     const fixedPart = paidFixed[h] - fixed / 2;
-    settle[h] = { fuelPart, fixedPart, net: fuelPart + fixedPart };
+    const paidPart = paidOut[h] - paidOut[other];
+    settle[h] = { fuelPart, fixedPart, paidPart, net: fuelPart + fixedPart + paidPart };
   }
   const debtor = settle.Klein.net < settle.Groot.net ? 'Klein' : 'Groot';
   const creditor = debtor === 'Klein' ? 'Groot' : 'Klein';
@@ -193,7 +198,7 @@ export function costInsights(entries, costs, now = new Date()) {
     perKmFuel: km ? fuel / km : null, perKmAll: km ? (fuel + fixed) / km : null,
     cats: [...cats.values()].filter((c) => c.total > 0).sort((a, b) => b.total - a.total),
     months: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)),
-    settle, debtor, creditor, amount, facts,
+    settle, debtor, creditor, amount, facts, paidTotal: paidOut.Klein + paidOut.Groot,
   };
 }
 

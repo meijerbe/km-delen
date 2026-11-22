@@ -30,12 +30,15 @@ function makeSheet(grid) {
 function fakeAppsScript(initial, costsInitial = [['Kosten', 'Beschrijving', 'Datum', 'Betaald door']]) {
   const grid = initial.map((r) => [...r]);
   const costsGrid = costsInitial.map((r) => [...r]);
-  const sheet = makeSheet(grid), costsSheet = makeSheet(costsGrid);
+  const sheet = makeSheet(grid), costsSheet = makeSheet(costsGrid), extra = {}, extraGrids = {};
   const sandbox = {
     SpreadsheetApp: {
       openById: (id) => {
         if (id !== 'SHEETID') throw new Error('onbekend id');
-        return { getSheetByName: (n) => ({ form_data: sheet, 'Overige kosten': costsSheet })[n] || null };
+        return {
+          getSheetByName: (n) => ({ form_data: sheet, 'Overige kosten': costsSheet, ...extra })[n] || null,
+          insertSheet: (n) => { const g = []; extraGrids[n] = g; extra[n] = makeSheet(g); extra[n].setFrozenRows = () => {}; return extra[n]; },
+        };
       },
       getActive: () => { throw new Error('los script heeft geen actieve spreadsheet'); },
     },
@@ -55,7 +58,7 @@ function fakeAppsScript(initial, costsInitial = [['Kosten', 'Beschrijving', 'Dat
       : sandbox.doGet({ parameter: Object.fromEntries(u.searchParams) });
     return new Response(text, { status: 200 });
   };
-  return { grid, costsGrid, costsSheet, fetch, cfg: { url: 'https://script.example/exec', token: 'tok', fetch, costs: true } };
+  return { grid, costsGrid, costsSheet, extraGrids, fetch, cfg: { url: 'https://script.example/exec', token: 'tok', fetch, costs: true } };
 }
 
 // Echte koppen van form_data
@@ -214,4 +217,30 @@ test('kosten uit de app komen in Overige kosten, onder de laatste kostenregel, m
   assert.equal(g[3][0], 35);
   await handle(req('POST', '/api/entries', { dels: [{ id: 'k1', upd: 12 }] }), ctx);
   assert.ok(!g.some((r) => r[8] === 'k1'));
+});
+
+test('betalingen: script maakt tabblad Verrekeningen aan, schrijft, bevestigt en verwijdert', async () => {
+  const sheet = fakeAppsScript(SHEET_ROWS);
+  const store = memoryStore();
+  const ctx = { code: 'c', store: () => store, sheet: sheet.cfg };
+  const pay = { id: 'b1', type: 'betaling', date: '2026-11-12', t: 1, hh: 'Groot', amount: 500, note: 'Tikkie', upd: 10 };
+  await handle(req('POST', '/api/entries', { puts: [pay] }), ctx);
+  const g = sheet.extraGrids.Verrekeningen;
+  assert.deepEqual(g[0], ['Datum', 'Van', 'Aan', 'Bedrag', 'Notitie', 'Bevestigd', 'App-id']);
+  assert.deepEqual(g[1].slice(1), ['Groot', 'Klein', 500, 'Tikkie', '', 'b1']);
+  await handle(req('POST', '/api/entries', { puts: [{ ...pay, ok: true, upd: 11 }] }), ctx);
+  assert.equal(g[1][5], '✓');
+  assert.equal(g.length, 2);
+  await handle(req('POST', '/api/entries', { dels: [{ id: 'b1', upd: 12 }] }), ctx);
+  assert.equal(g.length, 1);
+  assert.equal(sheet.grid.length, SHEET_ROWS.length);                       // form_data onaangeroerd
+});
+
+test('betalingen wachten zonder SHEET_COSTS', async () => {
+  const sheet = fakeAppsScript(SHEET_ROWS);
+  const store = memoryStore();
+  await handle(req('POST', '/api/entries', { puts: [{ id: 'b2', type: 'betaling', date: '2026-11-12', t: 1, hh: 'Groot', amount: 50, upd: 10 }] }),
+    { code: 'c', store: () => store, sheet: { ...sheet.cfg, costs: false } });
+  assert.equal(sheet.extraGrids.Verrekeningen, undefined);
+  assert.equal((await store.unsynced(10)).length, 1);
 });

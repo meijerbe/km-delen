@@ -52,7 +52,13 @@ Het tabblad **Kosten** leest *Overige kosten* rechtstreeks uit de (openbaar gede
 - wat een km kost (alleen brandstof en alles meegerekend), de verdeling per categorie en per maand;
 - Polo-weetjes (verzekering per dag, duurste klus, wegenbelasting, volgende APK).
 
-Kosten die je in de app invoert, gaan naar *Overige kosten* zodra het script is bijgewerkt en `SHEET_COSTS=1` in Vercel staat; tot die tijd wachten ze in de database.
+### Betalingen tussen de stellen
+
+Met **💸 Betaling invullen** leg je vast dat het ene stel het andere iets heeft overgemaakt (bijv. Groot → Klein € 500). Het bedrag gaat van de afrekening af; onder *Hoe komt dit?* staat het als regel "al betaald aan / al ontvangen van". De ontvanger kan de betaling met **Ontvangen? Bevestig ✓** afvinken.
+
+De spreadsheet is de bron: betalingen staan in het tabblad *Verrekeningen* (Datum, Van, Aan, Bedrag, Notitie, Bevestigd, App-id). Het script maakt dat tabblad zelf aan bij de eerste betaling. Je kunt er ook direct in typen; een ✓ (of wat dan ook) in *Bevestigd* telt als ontvangen. Regels met een App-id kun je in de app bewerken; de rest pas je in de sheet aan.
+
+Kosten en betalingen die je in de app invoert, gaan naar de sheet zodra het script is bijgewerkt en `SHEET_COSTS=1` in Vercel staat; tot die tijd wachten ze in de database.
 
 De workflow *Database wakker houden* roept elke drie dagen `/api/health` aan, zodat Supabase het gratis project niet pauzeert.
 

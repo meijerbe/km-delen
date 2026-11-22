@@ -399,6 +399,26 @@
   </div>
 </div>
 
+<!-- Sheet: betaling -->
+<div class="sheet-bg" id="payBg">
+  <div class="sheet">
+    <h3 id="pyTitle">Betaling invullen</h3>
+    <div class="muted small">Wie heeft betaald? <span id="pyTo" style="font-weight:800"></span></div>
+    <div class="pick" id="pyHH"></div>
+    <div class="row">
+      <div><label for="pyAmount">Bedrag (€)</label><input id="pyAmount" inputmode="decimal" placeholder="500"></div>
+      <div><label for="pyDate">Datum</label><input id="pyDate" type="date"></div>
+    </div>
+    <label for="pyNote">Notitie (optioneel)</label>
+    <input id="pyNote" maxlength="80" placeholder="bijv. Tikkie juni">
+    <div class="row" style="margin-top:16px">
+      <button class="ghost" id="pyCancel">Annuleren</button>
+      <button class="primary" id="pySave">Opslaan</button>
+    </div>
+    <button class="danger full" style="margin-top:10px;display:none" id="pyDelete">Verwijderen</button>
+  </div>
+</div>
+
 <!-- Sheet: parkeerplek -->
 <div class="sheet-bg" id="parkBg">
   <div class="sheet">

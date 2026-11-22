@@ -13,6 +13,8 @@
 
 const SHEET_NAME = 'form_data';
 const COSTS_NAME = 'Overige kosten';
+const PAYMENTS_NAME = 'Verrekeningen';
+const PAYMENTS_HEADER = ['Datum', 'Van', 'Aan', 'Bedrag', 'Notitie', 'Bevestigd', 'App-id'];
 const ID_HEADER = 'App-id';
 
 function doPost(e) {
@@ -28,6 +30,7 @@ function doPost(e) {
       try {
         if (op.op === 'delete') return remove_(sheet, cols, op.id);
         if (op.entry && op.entry.type === 'kost') return upsertCost_(op.entry);
+        if (op.entry && op.entry.type === 'betaling') return upsertPayment_(op.entry);
         return upsert_(sheet, cols, op.entry);
       }
       catch (err) { return { id: op.id || (op.entry && op.entry.id), ok: false, error: String(err) }; }
@@ -150,6 +153,11 @@ function remove_(sheet, cols, id) {
     row = findRow_(costs, cc, id);
     if (row) { costs.deleteRow(row); return { id: id, ok: true, removed: true }; }
   }
+  const pays = book_().getSheetByName(PAYMENTS_NAME);
+  if (pays && pays.getLastRow() >= 2) {
+    row = findRow_(pays, { id: PAYMENTS_HEADER.length }, id);
+    if (row) { pays.deleteRow(row); return { id: id, ok: true, removed: true }; }
+  }
   return { id: id, ok: true, removed: false };
 }
 
@@ -199,6 +207,34 @@ function upsertCost_(e) {
       if (c) sheet.getRange(row, c).setNumberFormat(sheet.getRange(row - 1, c).getNumberFormat());
     });
   }
+  return { id: e.id, ok: true, row: row };
+}
+
+// ---------- Verrekeningen (betalingen tussen de stellen) ----------
+
+function paymentsSheet_() {
+  const book = book_();
+  var sheet = book.getSheetByName(PAYMENTS_NAME);
+  if (!sheet) {
+    sheet = book.insertSheet(PAYMENTS_NAME);
+    sheet.getRange(1, 1, 1, PAYMENTS_HEADER.length).setValues([PAYMENTS_HEADER]);
+    if (sheet.setFrozenRows) sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function upsertPayment_(e) {
+  const sheet = paymentsSheet_();
+  const cols = { id: PAYMENTS_HEADER.length };
+  var row = findRow_(sheet, cols, e.id);
+  if (!row) row = sheet.getLastRow() + 1;
+  const p = e.date.split('-').map(Number);
+  const to = e.hh === 'Klein' ? 'Groot' : 'Klein';
+  sheet.getRange(row, 1, 1, PAYMENTS_HEADER.length).setValues([[
+    new Date(p[0], p[1] - 1, p[2]), e.hh, to, e.amount, e.note || '', e.ok ? '✓' : '', e.id,
+  ]]);
+  sheet.getRange(row, 1).setNumberFormat('dd-mm-yyyy');
+  sheet.getRange(row, 4).setNumberFormat('"€"#,##0.00');
   return { id: e.id, ok: true, row: row };
 }
 

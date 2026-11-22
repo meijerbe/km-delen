@@ -8,7 +8,7 @@ import { startLine, stopLine, tankLine, compareLine, honk, jingle } from './fun.
 // ================= opslag op het toestel =================
 const KEY = {
   entries: 'kmdelen.v3.entries', outbox: 'kmdelen.v3.outbox', code: 'kmdelen.v3.code',
-  settings: 'kmdelen.v3.settings', active: 'kmdelen.v3.active', costs: 'kmdelen.v3.sheetcosts',
+  settings: 'kmdelen.v3.settings', active: 'kmdelen.v3.active', costs: 'kmdelen.v3.sheetcosts', payments: 'kmdelen.v3.sheetpayments',
 };
 const mem = {};
 const local = {
@@ -498,7 +498,7 @@ function render() {
 }
 
 // ================= kosten =================
-let sheetCosts = local.get(KEY.costs, []), costsSync = false, costsError = '', costsLoadedAt = 0;
+let sheetCosts = local.get(KEY.costs, []), sheetPayments = local.get(KEY.payments, []), costsSync = false, costsError = '', costsLoadedAt = 0;
 async function loadCosts(force = false) {
   if (!code || (!force && Date.now() - costsLoadedAt < 60000)) return;
   try {
@@ -506,19 +506,38 @@ async function loadCosts(force = false) {
     const data = await res.json().catch(() => ({}));
     costsSync = !!data.costsSync;
     if (!res.ok) throw new Error(data.error || `Fout (${res.status})`);
-    sheetCosts = data.costs || []; local.set(KEY.costs, sheetCosts); costsError = ''; costsLoadedAt = Date.now();
+    sheetCosts = data.costs || []; local.set(KEY.costs, sheetCosts);
+    sheetPayments = data.payments || []; local.set(KEY.payments, sheetPayments);
+    costsError = ''; costsLoadedAt = Date.now();
   } catch (err) { costsError = err instanceof TypeError ? 'Offline: laatst bekende kosten' : err.message; }
   renderCosts();
 }
-const allCosts = () => [...sheetCosts, ...all().filter((e) => e.type === 'kost')];
+/**
+ * De sheet is de bron. Regels uit de app die (nog) niet in de sheet staan, tellen mee als "nog niet in de sheet".
+ * Staat een app-regel wel in de sheet (zelfde App-id), dan geldt de sheet — behalve direct na een eigen wijziging
+ * die nog onderweg is.
+ */
+function fromSheet(sheetList, type) {
+  const appRows = all().filter((e) => e.type === type), byId = new Map(appRows.map((e) => [e.id, e]));
+  const inSheet = new Set(sheetList.map((r) => r.id));
+  const merged = sheetList.map((r) => {
+    const mine = byId.get(r.id);
+    return mine && mine.upd > costsLoadedAt ? { ...mine, pending: true } : { ...r, editable: !!mine };
+  });
+  for (const e of appRows) if (!inSheet.has(e.id)) merged.push({ ...e, pending: true, editable: true });
+  return merged;
+}
+const allCosts = () => fromSheet(sheetCosts, 'kost');
+const allPayments = () => fromSheet(sheetPayments, 'betaling');
 const eur0 = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 const shortMonth = (k) => new Date(`${k}-01T12:00`).toLocaleDateString('nl-NL', { month: 'short' }).replace('.', '');
 
 function renderCosts() {
   const el = $('costsView');
   if (!el) return;
-  const costs = allCosts(), ins = costInsights(all(), costs);
+  const costs = allCosts(), payments = allPayments(), ins = costInsights(all(), costs, new Date(), payments);
   const { settle, debtor, creditor, amount } = ins;
+  const payList = [...payments].sort((a, b) => b.date.localeCompare(a.date) || (b.t || 0) - (a.t || 0));
   const sign = (v) => `${v >= 0 ? '+' : '−'} ${eur.format(Math.abs(v))}`;
   const maxMonth = Math.max(1, ...ins.months.map(([, v]) => v));
   const shareText = `🚗 Disco Polo afrekening\n${debtor} → ${creditor}: ${eur.format(amount)}\n(brandstof naar km, vaste kosten 50/50)\nkm-delen.vercel.app`;
@@ -532,17 +551,28 @@ function renderCosts() {
       <div class="amount">${eur.format(amount)}</div>
       <div class="muted small" style="text-align:center;font-weight:700">${debtor} betaalt ${creditor}</div>`
       : `<div class="amount" style="margin:14px 0 4px">Quitte! 🤝</div>`}
-      <div class="row" style="margin-top:12px">
+      ${ins.paidTotal ? `<div class="muted small" style="text-align:center;margin-top:4px">al verrekend: ${eur.format(ins.paidTotal)}</div>` : ''}
+      <button class="primary full" style="margin-top:12px" id="btnPay">💸 Betaling invullen</button>
+      <div class="row" style="margin-top:8px">
         <button class="ghost small" id="btnBreakdown">Hoe komt dit?</button>
-        ${amount >= 0.5 ? '<button class="primary small" id="btnShareSettle">Deel via WhatsApp</button>' : ''}
+        ${amount >= 0.5 ? '<button class="ghost small" id="btnShareSettle">Deel via WhatsApp</button>' : ''}
       </div>
       <div class="breakdown" id="breakdown"><table>
         ${HOUSEHOLDS.map((h) => `
           <tr><td colspan="2" style="padding-top:8px;color:var(--ink);font-weight:800">${h}</td></tr>
           <tr><td>⛽ brandstof getankt − aandeel naar km</td><td>${sign(settle[h].fuelPart)}</td></tr>
-          <tr><td>🧾 vaste kosten betaald − helft</td><td>${sign(settle[h].fixedPart)}</td></tr>`).join('')}
+          <tr><td>🧾 vaste kosten betaald − helft</td><td>${sign(settle[h].fixedPart)}</td></tr>
+          ${settle[h].paidPart ? `<tr><td>💸 ${settle[h].paidPart > 0 ? 'al betaald aan' : 'al ontvangen van'} ${h === 'Klein' ? 'Groot' : 'Klein'}</td><td>${sign(settle[h].paidPart)}</td></tr>` : ''}
+          <tr><td style="font-weight:800;color:var(--ink)">= saldo</td><td style="font-weight:800;color:var(--ink)">${sign(settle[h].net)}</td></tr>`).join('')}
       </table><p style="margin:8px 0 0">Brandstof: ${eur.format(ins.fuel)} verdeeld naar ${nf0.format(ins.km)} km. Vaste kosten: ${eur.format(ins.fixed)} gedeeld door twee. Ritten en tankbeurten die jullie niet invullen (samen op pad, vol-naar-vol) tellen niet mee.</p></div>
     </div>
+
+    ${payList.length ? `<h2>Betalingen</h2><div class="card">${payList.map((p) => `
+      <div class="item" data-pay="${esc(p.id)}">
+        ${duo(p.hh, 26)}<span class="muted" style="font-weight:900">→</span>${duo(p.hh === 'Klein' ? 'Groot' : 'Klein', 26)}
+        <div class="info"><div>${dayLabel(p.date)}${p.note ? ` · ${esc(p.note)}` : ''}</div>
+          <div class="muted small">${p.ok ? '✅ ontvangen' : `<a href="#" data-ok="${esc(p.id)}" style="color:var(--accent);font-weight:800">Ontvangen? Bevestig ✓</a>`}${p.pending ? ' · nog niet in de sheet' : ''}</div></div>
+        <span class="val">${eur.format(p.amount)}</span></div>`).join('')}</div>` : ''}
 
     <div class="card">
       <b>Wat kost een kilometer?</b>
@@ -565,11 +595,11 @@ function renderCosts() {
     ${ins.facts.length ? `<div class="card"><b>Polo-weetjes</b><div class="facts" style="margin-top:10px">${ins.facts.map((f) => `<div><span class="e">${f.emo}</span><span>${esc(f.text)}</span></div>`).join('')}</div></div>` : ''}
 
     <h2 class="between"><span>Vaste kosten</span><button class="ghost small" style="padding:6px 12px" id="btnAddCost">＋ Toevoegen</button></h2>
-    ${!costsSync && all().some((e) => e.type === 'kost') ? '<p class="hint" style="margin:-4px 4px 8px">Kosten uit de app komen in de spreadsheet zodra het script is bijgewerkt.</p>' : ''}
+    ${!costsSync && (costs.some((c) => c.pending) || payments.some((p) => p.pending)) ? '<p class="hint" style="margin:-4px 4px 8px">Kosten en betalingen uit de app komen in de spreadsheet zodra het script is bijgewerkt.</p>' : ''}
     <div class="card">${list.length ? list.map((c) => `
       <div class="item" data-cost="${esc(c.id)}">
         <span style="font-size:22px">${categoryOf(c.desc).emo}</span>
-        <div class="info"><div>${esc(c.desc || categoryOf(c.desc).key)}</div><div class="muted small">${dayLabel(c.date)} · ${c.hh}${c.src === 'sheet' ? '' : ' · app'}</div></div>
+        <div class="info"><div>${esc(c.desc || categoryOf(c.desc).key)}</div><div class="muted small">${dayLabel(c.date)} · ${c.hh}${c.pending ? ' · nog niet in de sheet' : ''}</div></div>
         <span class="val">${eur.format(c.cost)}</span></div>`).join('') : '<span class="muted">Nog geen vaste kosten.</span>'}
     </div>`;
   $('btnBreakdown').onclick = () => $('breakdown').classList.toggle('on');
@@ -578,11 +608,33 @@ function renderCosts() {
     window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank');
   };
   $('btnAddCost').onclick = () => openCost({ mode: 'new', hh: settings.lastHH, date: today() });
+  $('btnPay').onclick = () => openPay({ mode: 'new', hh: amount >= 0.5 ? debtor : settings.lastHH, amount: amount >= 0.5 ? amount : null, date: today() });
   el.querySelectorAll('[data-cost]').forEach((r) => {
     r.onclick = () => {
-      const e = entries.get(r.dataset.cost);
-      if (e) openCost({ ...e, mode: 'edit' });
+      const c = costs.find((x) => x.id === r.dataset.cost);
+      if (c?.editable) openCost({ ...c, mode: 'edit' });
       else toast('Deze kostenpost pas je aan in de spreadsheet');
+    };
+  });
+  el.querySelectorAll('[data-pay]').forEach((r) => {
+    r.onclick = (ev) => {
+      if (ev.target.closest('[data-ok]')) return;
+      const p = payments.find((x) => x.id === r.dataset.pay);
+      if (p?.editable) openPay({ ...p, mode: 'edit' });
+      else toast('Deze betaling pas je aan in de spreadsheet (tabblad Verrekeningen)');
+    };
+  });
+  el.querySelectorAll('[data-ok]').forEach((a) => {
+    a.onclick = async (ev) => {
+      ev.preventDefault();
+      const p = payments.find((x) => x.id === a.dataset.ok);
+      if (!p) return;
+      if (!p.editable) return toast('Vink deze af in de spreadsheet (kolom Bevestigd)');
+      const to = p.hh === 'Klein' ? 'Groot' : 'Klein';
+      if (!await confirmBox('Ontvangen?', `Heeft ${to} ${eur.format(p.amount)} van ${p.hh} ontvangen?`, 'Ja, ontvangen', 'Nog niet')) return;
+      const { pending, editable, src, app, ...clean } = p;
+      putEntry({ ...(entries.get(p.id) || clean), ...clean, ok: true });
+      pop(to, '✅', 'Ontvangst bevestigd', `${eur.format(p.amount)} van ${p.hh}`);
     };
   });
 }
@@ -613,6 +665,40 @@ $('ctSave').onclick = () => {
 $('ctDelete').onclick = async () => {
   if (!await confirmBox('Verwijderen?', 'Deze kostenpost wordt ook bij de anderen verwijderd.', 'Verwijderen', 'Terug')) return;
   const id = costSheet.id; $('costBg').classList.remove('on'); costSheet = null; deleteEntry(id);
+};
+
+// ================= betalingen =================
+let paySheet = null;
+function openPay(o) {
+  paySheet = { ...o };
+  $('pyTitle').textContent = o.mode === 'edit' ? 'Betaling bewerken' : 'Betaling invullen';
+  $('pyAmount').value = o.amount != null ? o.amount.toFixed(2).replace('.', ',') : ''; $('pyDate').value = o.date || today(); $('pyNote').value = o.note || '';
+  $('pyDelete').style.display = o.mode === 'edit' ? 'block' : 'none';
+  const draw = () => {
+    renderPick($('pyHH'), paySheet.hh, (h) => { paySheet.hh = h; draw(); });
+    $('pyTo').textContent = `aan ${paySheet.hh === 'Klein' ? 'Groot' : 'Klein'}`;
+  };
+  draw(); $('payBg').classList.add('on');
+}
+$('pyCancel').onclick = () => { $('payBg').classList.remove('on'); paySheet = null; };
+$('pySave').onclick = () => {
+  const amt = parseNum($('pyAmount').value), date = $('pyDate').value || today(), note = $('pyNote').value.trim();
+  if (!(amt > 0)) return toast('Vul het bedrag in');
+  if (date > today()) return toast('Datum ligt in de toekomst');
+  const base = paySheet.mode === 'edit' ? entries.get(paySheet.id) || {} : {};
+  const e = { ...base, id: base.id || paySheet.id || newId(), type: 'betaling', date, t: base.t || tFor(date), hh: paySheet.hh, amount: Math.round(amt * 100) / 100 };
+  if (note) e.note = note; else delete e.note;
+  if (paySheet.mode === 'edit' && paySheet.ok) e.ok = true;
+  const hh = paySheet.hh, to = hh === 'Klein' ? 'Groot' : 'Klein';
+  $('payBg').classList.remove('on'); paySheet = null;
+  putEntry(e);
+  const left = costInsights(all(), allCosts(), new Date(), allPayments()).amount;
+  if (left < 0.5) pop(hh, '🤝', 'Schuld ingelost!', `${hh} en ${to} staan quitte`);
+  else pop(hh, '💸', `${eur.format(amt)} betaald aan ${to}`, `Nog open: ${eur.format(left)}`);
+};
+$('pyDelete').onclick = async () => {
+  if (!await confirmBox('Betaling verwijderen?', 'Deze betaling wordt ook bij de anderen verwijderd.', 'Verwijderen', 'Terug')) return;
+  const id = paySheet.id; $('payBg').classList.remove('on'); paySheet = null; deleteEntry(id);
 };
 
 // ================= knoppen & navigatie =================
