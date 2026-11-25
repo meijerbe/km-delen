@@ -347,3 +347,37 @@ test('agenda: wie de Polo nu heeft, staat alvast geselecteerd; waarschuwing bij 
   await expect(p.locator('#toast')).toContainText('Groot heeft de Polo nu gereserveerd', { timeout: 5000 });
   await ctx.close();
 });
+
+test('rit pauzeren: GPS uit, afstand tijdens de pauze telt niet, na herladen nog gepauzeerd', async ({ browser }) => {
+  const ctx = await browser.newContext({ geolocation: START, permissions: ['geolocation'] });
+  const p = await ctx.newPage();
+  await login(p);
+  await expect(p.locator('#gate')).toBeHidden();
+  await p.click('#pickStart >> text=Klein');
+  await p.click('#btnStart');
+  let lat = START.latitude;
+  for (let i = 0; i < 12; i++) { lat += 0.00045; await ctx.setGeolocation({ ...START, latitude: lat }); await p.waitForTimeout(1100); }
+  const before = await p.locator('#actKm').innerText();
+  expect(parseFloat(before.replace(',', '.'))).toBeGreaterThan(0.4);
+
+  await p.click('#btnPause');
+  await expect(p.locator('#btnPause')).toHaveText('▶ Verder rijden');
+  await expect(p.locator('#gpsTxt')).toHaveText('Gepauzeerd');
+  const t1 = await p.locator('#actTime').innerText();
+  await ctx.setGeolocation({ ...START, latitude: lat + 0.05 });          // ~5,5 km verder tijdens de pauze
+  await p.waitForTimeout(2500);
+  await expect(p.locator('#actTime')).toHaveText(t1);                    // tijd staat stil
+  await expect(p.locator('#actKm')).toHaveText(before);
+
+  await p.reload();                                                      // app dicht en weer open
+  await expect(p.locator('#btnPause')).toHaveText('▶ Verder rijden');
+  await p.click('#btnPause');
+  lat += 0.05;
+  for (let i = 0; i < 6; i++) { lat += 0.00045; await ctx.setGeolocation({ ...START, latitude: lat }); await p.waitForTimeout(1100); }
+  const after = parseFloat((await p.locator('#actKm').innerText()).replace(',', '.'));
+  expect(after).toBeGreaterThan(parseFloat(before.replace(',', '.')));
+  expect(after).toBeLessThan(1.2);                                       // de 5,5 km-sprong telt niet
+  await p.click('#btnStop');
+  await expect(p.locator('#shSub')).toContainText('rijtijd');
+  await ctx.close();
+});

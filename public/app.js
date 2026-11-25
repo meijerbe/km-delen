@@ -250,10 +250,33 @@ function startRide() {
   render(); startWatch();
   toast(startLine(pickHH));
 }
+/** Rijtijd zonder pauzes. */
+const rideMs = (a, now = Date.now()) => (a.pausedAt || now) - a.start - (a.pausedMs || 0);
+
+/** Pauze: GPS uit, tijd stil, parkeerplek bijwerken. Verder: meting gaat door zonder de afstand tussendoor. */
+function pauseRide() {
+  if (!active || active.pausedAt) return;
+  stopWatch();
+  active.pausedAt = Date.now();
+  if (active.last) putEntry({ id: PARK_ID, type: 'park', date: today(), t: Date.now(), hh: active.hh, lat: active.last.lat, lon: active.last.lon, src: 'gps' });
+  active.last = null;                     // na de pauze opnieuw beginnen: niet de "sprong" meetellen
+  saveActive(); render();
+  pop(active.hh, '⏸️', 'Rit gepauzeerd', 'GPS staat uit. Tik op "Verder rijden" als jullie weer gaan.');
+}
+function resumeRide() {
+  if (!active?.pausedAt) return;
+  const now = Date.now();
+  active.pausedMs = (active.pausedMs || 0) + (now - active.pausedAt);
+  active.pausedAt = null;
+  if (active.lastGood) active.lastGood = now;   // pauze telt niet als "geen GPS-signaal"
+  saveActive(); render(); startWatch();
+  toast(`Verder! ${nf1.format(active.m / 1000)} km tot nu toe 🚗`);
+}
+
 /** Hoe betrouwbaar was de GPS-meting? Geeft een waarschuwing of '' terug. */
 function gpsWarning(a, now = Date.now()) {
-  const dur = now - a.start, km = a.m / 1000;
-  const tail = now - (a.lastGood || a.start);
+  const end = a.pausedAt || now, dur = rideMs(a, now), km = a.m / 1000;
+  const tail = end - (a.lastGood || a.start);
   const gap = (a.gapMs || 0) + (tail > GAP_MS ? tail : 0);
   if (!a.fixes) return '⚠️ Geen GPS-signaal ontvangen. Vul de km of de kilometerstand in.';
   if (km < 0.5 && dur > 5 * 60000) return '⚠️ GPS heeft bijna niets gemeten. Klopt dat, of vul je de km zelf in?';
@@ -267,8 +290,8 @@ function stopRide() {
   const km = active.m / 1000, warn = gpsWarning(active);
   openSheet({
     mode: 'new', type: 'rit', id: active.id, hh: active.hh, date: isoDate(active.start), t: active.start,
-    km: active.fixes ? Math.round(km) : null, bij: lastBij(active.hh), src: 'gps', dur: Date.now() - active.start, rideMode: 'km',
-    sub: `Gemeten: ${nf1.format(km)} km in ${fmtDur(Date.now() - active.start)}. Je kunt het aantal km hieronder aanpassen.`,
+    km: active.fixes ? Math.round(km) : null, bij: lastBij(active.hh), src: 'gps', dur: rideMs(active), rideMode: 'km',
+    sub: `Gemeten: ${nf1.format(km)} km in ${fmtDur(rideMs(active))}${active.pausedMs || active.pausedAt ? ' rijtijd' : ''}. Je kunt het aantal km hieronder aanpassen.`,
     warn,
   });
 }
@@ -480,7 +503,10 @@ function renderActive() {
   const pill = $('actHH'); pill.textContent = active.hh; pill.className = `pill ${active.hh}`;
   showCar('driveCar', active.hh);
   $('actKm').textContent = nf1.format(active.m / 1000);
-  const ms = Date.now() - active.start;
+  const ms = rideMs(active), paused = !!active.pausedAt;
+  $('driveCar').classList.toggle('driving', !paused);
+  $('btnPause').textContent = paused ? '▶ Verder rijden' : '⏸ Pauze';
+  $('btnPause').className = paused ? 'primary full' : 'ghost full';
   $('actTime').textContent = fmtDur(ms);
   $('actSpeed').textContent = curSpeed != null ? nf0.format(curSpeed) : '–';
   $('actAvg').textContent = ms > 60000 && active.m > 100 ? nf0.format((active.m / ms) * 3600) : '–';
@@ -494,6 +520,7 @@ function renderActive() {
     toast(`${hundreds * 100} km! Tijd voor een tankstation? ⛽`);
   }
   const dot = $('gpsDot'), txt = $('gpsTxt');
+  if (paused) { dot.className = 'dot'; txt.textContent = 'Gepauzeerd'; $('actSpeed').textContent = '–'; return; }
   if (!lastFix) { if (!dot.classList.contains('bad')) { dot.className = 'dot'; txt.textContent = 'GPS zoeken…'; } return; }
   const age = (Date.now() - lastFix.t) / 1000, a = nf0.format(lastFix.acc);
   if (age > 20) { dot.className = 'dot weak'; txt.textContent = 'Geen nieuw signaal'; }
@@ -754,6 +781,7 @@ for (const id of ['heroCar', 'driveCar', 'gateCar']) {
 }
 $('btnStart').onclick = startRide;
 $('btnStop').onclick = stopRide;
+$('btnPause').onclick = () => (active?.pausedAt ? resumeRide() : pauseRide());
 $('btnCancel').onclick = async () => {
   if (await confirmBox('Rit annuleren?', 'De gemeten kilometers worden niet opgeslagen.', 'Annuleren', 'Doorgaan')) {
     stopWatch(); active = null; saveActive(); render();
@@ -882,7 +910,7 @@ document.querySelectorAll('nav button').forEach((b) => {
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
-  if (active) startWatch();
+  if (active && !active.pausedAt) startWatch();
   sync();
 });
 window.addEventListener('online', () => sync());
@@ -891,5 +919,6 @@ setInterval(() => { if (document.visibilityState === 'visible' && !sheet) sync()
 // ================= start =================
 $('gateCar').innerHTML = logo();
 render();
-if (active) { startWatch(); toast('Rit loopt nog — meting gaat verder'); }
+if (active && active.pausedAt) toast('Rit staat op pauze ⏸️');
+else if (active) { startWatch(); toast('Rit loopt nog — meting gaat verder'); }
 if (code) sync(); else showGate();

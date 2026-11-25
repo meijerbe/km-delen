@@ -1,5 +1,6 @@
 // Versiegeschiedenis — nieuwste bovenaan. Bij elke wijziging een regel toevoegen en VERSION ophogen.
 export const CHANGES = [
+  { v: '1.12', date: '2026-11-25', items: ['Rit pauzeren als je ergens bent: GPS uit, tijd stil, parkeerplek bijgewerkt', 'Na de pauze telt alleen wat je verder rijdt'] },
   { v: '1.11', date: '2026-11-22', items: ['Reserveringen uit de gedeelde agenda op het Rit-scherm', 'Wie de Polo nu gereserveerd heeft, staat alvast geselecteerd', 'Waarschuwing als je rijdt terwijl het andere stel hem gereserveerd heeft'] },
   { v: '1.10', date: '2026-11-22', items: ['Opgeschoond: ritten alleen nog via het formulier, het script doet alleen kosten en betalingen', 'Kosten en betalingen die je in de spreadsheet verwijdert, verdwijnen ook uit de app'] },
   { v: '1.9', date: '2026-11-22', items: ['Ritten en tankbeurten komen rechtstreeks uit de spreadsheet (ook die via het formulier)', 'Wat al in de spreadsheet staat, pas je daar aan; in de app alleen wat er nog niet in staat', 'Knop "Formulier-invoer ophalen" is niet meer nodig', 'Ritten en tankbeurten uit de app gaan via het Google-formulier de spreadsheet in'] },
